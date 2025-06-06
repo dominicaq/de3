@@ -1,0 +1,17 @@
+# CMake build directories
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+
+# VSCode settings
+.vscode/
+
+# Optional: Other common generated files
+*.dir/
+*.o
+*.obj
+*.exe
+*.out
+*.log
