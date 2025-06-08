@@ -1,17 +1,20 @@
 # CMake build directories
 /build/
+/engine/build/
+/game/build/
+/launcher/build/
 /CMakeFiles/
 /CMakeCache.txt
 /cmake_install.cmake
 /Makefile
 
+# Built binaries
+*.dll
+*.exe
+*.lib
+*.pdb
+*.ilk
+*.exp
+
 # VSCode settings
 .vscode/
-
-# Optional: Other common generated files
-*.dir/
-*.o
-*.obj
-*.exe
-*.out
-*.log
