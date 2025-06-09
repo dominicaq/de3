@@ -3,27 +3,10 @@
 #include "Window.h"
 #include "Config.h"
 
-// Define the global config
+// Engine includes
+#include "renderer/Renderer.h"
+
 EngineConfig g_config;
-
-// TODO: Add your DirectX 12 initialization and rendering functions here
-bool InitializeDirectX12(HWND hwnd) {
-    // Initialize DirectX 12 device, command queue, swap chain, etc.
-    // Use g_config.vsync for swap chain creation
-    // Use g_config.windowWidth/windowHeight for render targets
-    std::cout << "DirectX 12 initialization placeholder" << std::endl;
-    return true;
-}
-
-void Render() {
-    // Your DX12 rendering code here
-    // Clear render targets, draw geometry, present, etc.
-}
-
-void Shutdown() {
-    // Clean up DirectX 12 resources
-    std::cout << "DirectX 12 shutdown placeholder" << std::endl;
-}
 
 int main() {
     std::cout << "Starting game engine..." << std::endl;
@@ -39,11 +22,7 @@ int main() {
     }
 
     // Initialize DirectX 12
-    if (!InitializeDirectX12(window.GetHandle())) {
-        std::cerr << "Failed to initialize DirectX 12!" << std::endl;
-        window.Destroy();
-        return -1;
-    }
+    Renderer renderer(window.GetHandle());
 
     std::cout << "Engine initialized successfully!" << std::endl;
     std::cout << "Controls:" << std::endl;
@@ -80,7 +59,6 @@ int main() {
         }
 
         // Render frame
-        Render();
 
         // Optional: Frame rate limiting
         if (!g_config.unlimitedFPS) {
@@ -92,7 +70,6 @@ int main() {
     std::cout << "Shutting down engine..." << std::endl;
 
     // Clean shutdown
-    Shutdown();
     window.Destroy();
 
     std::cout << "Engine shutdown complete." << std::endl;

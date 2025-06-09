@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
-# Project name - change this to your desired project name
-set(PROJECT_NAME "Win32WindowApp")
+# Project name
+set(PROJECT_NAME "de3")
 project(${PROJECT_NAME})
 
 # Set C++ standard
@@ -29,10 +29,20 @@ add_executable(${PROJECT_NAME}
 # Include src directory for headers
 target_include_directories(${PROJECT_NAME} PRIVATE src)
 
-# Link Windows libraries (added dwmapi for DirectX 12 support)
+# Link Windows libraries + DirectX 12 libraries
 target_link_libraries(${PROJECT_NAME}
     user32
     gdi32
     kernel32
     dwmapi
+    d3d12          # DirectX 12
+    dxgi           # DXGI (swap chain, factory, adapters)
+    d3dcompiler    # HLSL shader compilation
+    dxguid         # DirectX GUIDs
+)
+
+# Add compiler definitions for Windows
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    WIN32_LEAN_AND_MEAN
+    NOMINMAX
 )
