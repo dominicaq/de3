@@ -7,28 +7,26 @@ private:
     ComPtr<ID3D12Device> m_device;
     ComPtr<IDXGIFactory4> m_factory;
     ComPtr<IDXGIAdapter1> m_adapter;
-
-    // Debug layer stuff
     ComPtr<ID3D12Debug> m_debugController;
-    bool m_debugEnabled;
+    bool m_debugEnabled = false;
 
-    // Private helper functions
     bool FindHardwareAdapter();
 
 public:
+    ~DX12Device();
+
     bool Initialize();
-    void Shutdown();
+
+    // Check if all requested features are supported
+    bool SupportsFeatures(const DX12Features& requestedFeatures) const;
+
+    // Check individual feature support
+    bool SupportsFeature(DX12Features::FLAG feature) const;
 
     // Getters
     ID3D12Device* GetDevice() const;
     IDXGIFactory4* GetFactory() const;
-
-    // Resource creation helpers
-    ComPtr<ID3D12Resource> CreateBuffer(size_t size, D3D12_HEAP_TYPE heapType);
-    ComPtr<ID3D12Resource> CreateTexture2D(uint32_t width, uint32_t height, DXGI_FORMAT format);
-    ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE type, uint32_t numDescriptors);
-
-    // Utility functions
-    uint32_t GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE type);
-    bool CheckFeatureSupport();
+    IDXGIAdapter1* GetAdapter() const;
+    uint32_t GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE type) const;
+    bool IsDebugEnabled() const { return m_debugEnabled; }
 };

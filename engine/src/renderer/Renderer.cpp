@@ -1,9 +1,8 @@
 #include "Renderer.h"
 
 Renderer::Renderer(HWND hwnd) {
-    DX12Device device;
-    if (!device.Initialize()) {
-        // Handle failure
-        return;
+    m_device = std::make_unique<DX12Device>();
+    if (!m_device->Initialize()) {
+        throw std::runtime_error("Failed to initialize DirectX 12 device.");
     }
 }

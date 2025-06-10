@@ -2,7 +2,6 @@
 #include <iostream>
 #include "Window.h"
 #include "Config.h"
-
 // Engine includes
 #include "renderer/Renderer.h"
 
@@ -21,15 +20,25 @@ int main() {
         return -1;
     }
 
-    // Initialize DirectX 12
-    Renderer renderer(window.GetHandle());
+    std::unique_ptr<Renderer> renderer;
+
+    try {
+        // Initialize DirectX 12 - only catch renderer setup errors
+        renderer = std::make_unique<Renderer>(window.GetHandle());
+    }
+    catch (const std::runtime_error& e) {
+        std::cerr << "Renderer Setup Error: " << e.what() << std::endl;
+        MessageBoxA(window.GetHandle(), e.what(), "Graphics Error", MB_OK | MB_ICONERROR);
+        window.Destroy();
+        return -1;
+    }
 
     std::cout << "Engine initialized successfully!" << std::endl;
     std::cout << "Controls:" << std::endl;
     std::cout << "  ESC - Exit" << std::endl;
     std::cout << "  Alt+Enter - Toggle Fullscreen" << std::endl;
 
-    // Main game loop
+    // Main game loop - no exception handling, let engine errors crash naturally
     while (!window.ShouldClose()) {
         // Process Windows messages and input
         window.ProcessEvents();
@@ -62,16 +71,12 @@ int main() {
 
         // Optional: Frame rate limiting
         if (!g_config.unlimitedFPS) {
-            // Simple frame rate limiting (you might want a more sophisticated timer)
             Sleep(1000 / g_config.targetFPS);
         }
     }
 
     std::cout << "Shutting down engine..." << std::endl;
-
-    // Clean shutdown
     window.Destroy();
-
     std::cout << "Engine shutdown complete." << std::endl;
     return 0;
 }
