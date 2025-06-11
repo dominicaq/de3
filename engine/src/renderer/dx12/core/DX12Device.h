@@ -15,7 +15,7 @@ private:
 public:
     ~DX12Device();
 
-    bool Initialize();
+    bool Initialize(bool enableDebugController = false);
 
     // Check if all requested features are supported
     bool SupportsFeatures(const DX12Features& requestedFeatures) const;

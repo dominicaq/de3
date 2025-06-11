@@ -13,16 +13,18 @@ DX12Device::~DX12Device() {
     }
 }
 
-bool DX12Device::Initialize() {
+bool DX12Device::Initialize(bool enableDebugController) {
     HRESULT hr;
     m_debugEnabled = false;
 
     // Enable debug layer in debug builds
 #ifdef _DEBUG
-    hr = D3D12GetDebugInterface(IID_PPV_ARGS(&m_debugController));
-    if (SUCCEEDED(hr)) {
-        m_debugController->EnableDebugLayer();
-        m_debugEnabled = true;
+    if (enableDebugController) {
+        hr = D3D12GetDebugInterface(IID_PPV_ARGS(&m_debugController));
+        if (SUCCEEDED(hr)) {
+            m_debugController->EnableDebugLayer();
+            m_debugEnabled = true;
+        }
     }
 #endif
 
