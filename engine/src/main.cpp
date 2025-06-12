@@ -2,7 +2,6 @@
 #include <iostream>
 #include "Window.h"
 #include "Config.h"
-
 // Engine includes
 #include "renderer/Renderer.h"
 #include "renderer/FPSUtils.h"
@@ -17,7 +16,6 @@ int main() {
     }
 
     std::unique_ptr<Renderer> renderer;
-
     try {
         // Initialize DirectX 12 - only catch renderer setup errors
         renderer = std::make_unique<Renderer>(window.GetHandle(), g_config);
@@ -29,6 +27,13 @@ int main() {
         return -1;
     }
 
+    // Setup resize callback - SwapChain will handle GPU synchronization
+    window.SetResizeCallback([&renderer](UINT width, UINT height) {
+        if (renderer) {
+            renderer->OnReconfigure(width, height);
+        }
+    });
+
     PrintConfigStats(g_config);
 
     // Game loop
@@ -38,6 +43,7 @@ int main() {
 
         // Render frame
         renderer->Render(g_config);
+
         if (g_config.cappedFPS && !g_config.vsync) {
             FPSUtils::LimitFrameRate(g_config.targetFPS);
         }

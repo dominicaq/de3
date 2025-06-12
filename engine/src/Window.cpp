@@ -1,4 +1,5 @@
 #include "Window.h"
+#include "Config.h"
 #include <iostream>
 
 Window::~Window() {
@@ -6,28 +7,22 @@ Window::~Window() {
 }
 
 bool Window::Create(const EngineConfig& config) {
+    m_config = &config;
+
     if (!RegisterWindowClass()) {
         std::cerr << "Failed to register window class" << std::endl;
         return false;
     }
 
-    // Get initial settings from passed config
-    m_width = config.windowWidth;
-    m_height = config.windowHeight;
-    m_isFullscreen = config.fullscreen;
-
-    // Calculate window size (accounting for borders)
-    RECT windowRect = { 0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height) };
+    RECT windowRect = { 0, 0, static_cast<LONG>(m_config->windowWidth), static_cast<LONG>(m_config->windowHeight) };
     DWORD windowStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&windowRect, windowStyle, FALSE);
 
-    // Store windowed style for fullscreen toggle
     m_windowedStyle = windowStyle;
 
-    // Create window
     m_hwnd = CreateWindowA(
         "GameWindowClass",
-        config.windowTitle.c_str(),
+        m_config->windowTitle.c_str(),
         windowStyle,
         CW_USEDEFAULT, CW_USEDEFAULT,
         windowRect.right - windowRect.left,
@@ -42,23 +37,17 @@ bool Window::Create(const EngineConfig& config) {
         return false;
     }
 
-    // Center the window
     CenterWindow();
-
-    // Store windowed position for fullscreen toggle
     GetWindowRect(m_hwnd, &m_windowedRect);
 
-    // Set fullscreen if requested
-    if (m_isFullscreen) {
-        // Create a mutable copy for SetFullscreen
-        EngineConfig mutableConfig = config;
-        SetFullscreen(true, mutableConfig);
+    if (m_config->fullscreen) {
+        SetFullscreen(true);
     }
 
     ShowWindow(m_hwnd, SW_SHOW);
     UpdateWindow(m_hwnd);
 
-    std::cout << "Window created successfully: " << m_width << "x" << m_height << std::endl;
+    std::cout << "Window created successfully: " << m_config->windowWidth << "x" << m_config->windowHeight << std::endl;
     return true;
 }
 
@@ -78,90 +67,100 @@ void Window::ProcessEvents() {
     }
 }
 
-void Window::GetScreenDimensions(uint32_t& width, uint32_t& height) const {
-    width = GetSystemMetrics(SM_CXSCREEN);
-    height = GetSystemMetrics(SM_CYSCREEN);
-}
-
-bool Window::ChangeResolution(uint32_t width, uint32_t height, EngineConfig& config) {
+bool Window::ChangeResolution(UINT width, UINT height) {
     if (!m_hwnd) return false;
 
-    // Update passed config
-    config.windowWidth = width;
-    config.windowHeight = height;
+    const_cast<EngineConfig*>(m_config)->windowWidth = width;
+    const_cast<EngineConfig*>(m_config)->windowHeight = height;
 
-    m_width = width;
-    m_height = height;
-
-    if (m_isFullscreen) {
-        // In fullscreen, just update our tracking variables
-        // The actual display change happens in SetFullscreen
+    if (m_config->fullscreen) {
         return true;
     } else {
-        // Resize windowed mode
         RECT windowRect = { 0, 0, static_cast<LONG>(width), static_cast<LONG>(height) };
         AdjustWindowRect(&windowRect, m_windowedStyle, FALSE);
 
         int windowWidth = windowRect.right - windowRect.left;
         int windowHeight = windowRect.bottom - windowRect.top;
 
-        // Center the resized window
-        uint32_t screenWidth = 1;
-        uint32_t screenHeight = 1;
-        GetScreenDimensions(screenWidth, screenHeight);
+        UINT screenWidth = GetSystemMetrics(SM_CXSCREEN);
+        UINT screenHeight = GetSystemMetrics(SM_CYSCREEN);
         int x = (screenWidth - windowWidth) / 2;
         int y = (screenHeight - windowHeight) / 2;
 
-        SetWindowPos(m_hwnd, nullptr, x, y, windowWidth, windowHeight,
-                    SWP_NOZORDER | SWP_NOACTIVATE);
-
-        // Update stored windowed rect
+        SetWindowPos(m_hwnd, nullptr, x, y, windowWidth, windowHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         GetWindowRect(m_hwnd, &m_windowedRect);
     }
 
-    std::cout << "Resolution changed to: " << width << "x" << height << std::endl;
+    if (m_resizeCallback) {
+        m_resizeCallback(width, height);
+    }
+
     return true;
 }
 
-bool Window::SetFullscreen(bool fullscreen, EngineConfig& config) {
-    if (!m_hwnd || m_isFullscreen == fullscreen) {
-        return true; // Already in desired state
+bool Window::SetFullscreen(bool fullscreen) {
+    if (!m_hwnd || m_config->fullscreen == fullscreen) {
+        return true;
     }
 
     if (fullscreen) {
-        // Store current windowed position
         GetWindowRect(m_hwnd, &m_windowedRect);
-
-        // Remove window decorations
         SetWindowLong(m_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
 
-        // Set window to cover entire screen
-        uint32_t screenWidth = 1;
-        uint32_t screenHeight = 1;
-        GetScreenDimensions(screenWidth, screenHeight);
-        SetWindowPos(m_hwnd, HWND_TOP, 0, 0,
-                    screenWidth, screenHeight,
-                    SWP_FRAMECHANGED | SWP_NOACTIVATE);
+        UINT screenWidth = GetSystemMetrics(SM_CXSCREEN);
+        UINT screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
-        m_isFullscreen = true;
-        std::cout << "Switched to fullscreen mode" << std::endl;
+        SetWindowPos(m_hwnd, HWND_TOP, 0, 0, screenWidth, screenHeight, SWP_FRAMECHANGED | SWP_NOACTIVATE);
+
+        const_cast<EngineConfig*>(m_config)->fullscreen = true;
+        const_cast<EngineConfig*>(m_config)->windowWidth = screenWidth;
+        const_cast<EngineConfig*>(m_config)->windowHeight = screenHeight;
+
+        if (m_resizeCallback) {
+            m_resizeCallback(screenWidth, screenHeight);
+        }
     } else {
-        // Restore window decorations
         SetWindowLong(m_hwnd, GWL_STYLE, m_windowedStyle);
 
-        // Restore windowed position and size
-        SetWindowPos(m_hwnd, nullptr,
-                    m_windowedRect.left, m_windowedRect.top,
-                    m_windowedRect.right - m_windowedRect.left,
-                    m_windowedRect.bottom - m_windowedRect.top,
-                    SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
+        // Validate the stored rect before using it
+        int width = m_windowedRect.right - m_windowedRect.left;
+        int height = m_windowedRect.bottom - m_windowedRect.top;
 
-        m_isFullscreen = false;
-        std::cout << "Switched to windowed mode" << std::endl;
+        if (width <= 0 || height <= 0) {
+            // Use default size and center it
+            width = 800;
+            height = 600;
+            UINT screenWidth = GetSystemMetrics(SM_CXSCREEN);
+            UINT screenHeight = GetSystemMetrics(SM_CYSCREEN);
+            int x = (screenWidth - width) / 2;
+            int y = (screenHeight - height) / 2;
+
+            SetWindowPos(m_hwnd, nullptr, x, y, width, height,
+                        SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
+        } else {
+            SetWindowPos(m_hwnd, nullptr,
+                        m_windowedRect.left, m_windowedRect.top,
+                        width, height,
+                        SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
+        }
+
+        // Force the window to be visible and redraw
+        ShowWindow(m_hwnd, SW_SHOW);
+        InvalidateRect(m_hwnd, nullptr, TRUE);
+        UpdateWindow(m_hwnd);
+
+        const_cast<EngineConfig*>(m_config)->fullscreen = false;
+
+        RECT clientRect;
+        GetClientRect(m_hwnd, &clientRect);
+        const_cast<EngineConfig*>(m_config)->windowWidth = clientRect.right - clientRect.left;
+        const_cast<EngineConfig*>(m_config)->windowHeight = clientRect.bottom - clientRect.top;
+
+        if (m_resizeCallback) {
+            m_resizeCallback(m_config->windowWidth, m_config->windowHeight);
+        }
     }
 
-    // Update config
-    config.fullscreen = fullscreen;
     return true;
 }
 
@@ -169,12 +168,10 @@ LRESULT CALLBACK Window::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     Window* window = nullptr;
 
     if (msg == WM_CREATE) {
-        // Get the Window pointer from CreateWindowEx
         CREATESTRUCT* cs = reinterpret_cast<CREATESTRUCT*>(lParam);
         window = reinterpret_cast<Window*>(cs->lpCreateParams);
         SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(window));
     } else {
-        // Retrieve the Window pointer
         window = reinterpret_cast<Window*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
     }
 
@@ -190,9 +187,14 @@ LRESULT CALLBACK Window::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         if (wParam == VK_ESCAPE && window) {
             window->Close();
         }
-        // Note: Alt+Enter handling would need config access -
-        // consider using a callback or event system for this
         return 0;
+
+    case WM_SYSKEYDOWN:
+        if (wParam == VK_RETURN && window) {
+            window->SetFullscreen(!window->m_config->fullscreen);
+            return 0;
+        }
+        break;
 
     case WM_SIZE:
         if (window && wParam != SIZE_MINIMIZED) {
@@ -205,6 +207,12 @@ LRESULT CALLBACK Window::WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
             window->Close();
         }
         return 0;
+
+    case WM_SYSCOMMAND:
+        if ((wParam & 0xFFF0) == SC_KEYMENU) {
+            return 0;
+        }
+        break;
     }
 
     return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -230,8 +238,17 @@ void Window::UpdateWindowSize() {
 
     RECT clientRect;
     GetClientRect(m_hwnd, &clientRect);
-    m_width = clientRect.right - clientRect.left;
-    m_height = clientRect.bottom - clientRect.top;
+    UINT newWidth = clientRect.right - clientRect.left;
+    UINT newHeight = clientRect.bottom - clientRect.top;
+
+    if (newWidth != m_config->windowWidth || newHeight != m_config->windowHeight) {
+        const_cast<EngineConfig*>(m_config)->windowWidth = newWidth;
+        const_cast<EngineConfig*>(m_config)->windowHeight = newHeight;
+
+        if (m_resizeCallback) {
+            m_resizeCallback(m_config->windowWidth, m_config->windowHeight);
+        }
+    }
 }
 
 void Window::CenterWindow() {
@@ -242,9 +259,8 @@ void Window::CenterWindow() {
 
     int windowWidth = windowRect.right - windowRect.left;
     int windowHeight = windowRect.bottom - windowRect.top;
-    uint32_t screenWidth = 1;
-    uint32_t screenHeight = 1;
-    GetScreenDimensions(screenWidth, screenHeight);
+    UINT screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    UINT screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
     int x = (screenWidth - windowWidth) / 2;
     int y = (screenHeight - windowHeight) / 2;

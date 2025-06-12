@@ -14,7 +14,7 @@ struct EngineConfig {
 
     // Renderer settings
     bool enableDebugLayer = false;
-    uint32_t maxFramesInFlight = 2;
+    uint32_t backBufferCount = 2;
 
     // Performance settings
     uint32_t targetFPS = 180;
@@ -34,7 +34,21 @@ inline void PrintConfigStats(const EngineConfig& config) {
     // Renderer Settings
     std::cout << "\n[Renderer Settings]" << std::endl;
     std::cout << "Debug Layer: " << (config.enableDebugLayer ? "Enabled" : "Disabled") << std::endl;
-    std::cout << "Max Frames in Flight: " << config.maxFramesInFlight << std::endl;
+    std::cout << "Buffering: ";
+    switch(config.backBufferCount) {
+        case 2:
+            std::cout << "Double buffering (2 buffers)" << std::endl;
+            break;
+        case 3:
+            std::cout << "Triple buffering (3 buffers)" << std::endl;
+            break;
+        case 4:
+            std::cout << "Quad buffering (4 buffers)" << std::endl;
+            break;
+        default:
+            std::cout << config.backBufferCount << " buffers" << std::endl;
+            break;
+    }
 
     // Performance Settings
     std::cout << "\n[Performance Settings]" << std::endl;

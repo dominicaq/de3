@@ -15,6 +15,7 @@ using Microsoft::WRL::ComPtr;
 #include <string>
 #include <memory>
 #include <bitset>
+#include <iostream>
 
 #include <sstream>
 #include <stdexcept>

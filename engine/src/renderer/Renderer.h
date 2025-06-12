@@ -8,7 +8,7 @@ class Renderer {
 public:
     Renderer(HWND hwnd, const EngineConfig& config);
     void Render(const EngineConfig& config);
-    void OnResize(UINT width, UINT height);
+    void OnReconfigure(UINT width, UINT height, UINT bufferCount = 0);
 
 private:
     std::unique_ptr<DX12Device> m_device;
