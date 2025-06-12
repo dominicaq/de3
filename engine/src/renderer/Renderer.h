@@ -1,8 +1,12 @@
 #pragma once
-
 #include "../Config.h"
 #include "dx12/core/DX12Device.h"
-#include "dx12/core/DX12SwapChain.h"
+#include "dx12/core/SwapChain.h"
+
+// Command System
+#include "dx12/core/CommandAllocator.h"
+#include "dx12/core/CommandList.h"
+#include "dx12/CommandQueueManager.h"
 
 class Renderer {
 public:
@@ -12,6 +16,10 @@ public:
 
 private:
     std::unique_ptr<DX12Device> m_device;
-    ComPtr<ID3D12CommandQueue> m_commandQueue;
+    std::unique_ptr<CommandQueueManager> m_commandManager;
     std::unique_ptr<SwapChain> m_swapChain;
+
+    // Command recording objects
+    std::unique_ptr<CommandAllocator> m_commandAllocator;
+    std::unique_ptr<CommandList> m_commandList;
 };

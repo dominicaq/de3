@@ -7,7 +7,7 @@ private:
     ComPtr<ID3D12Device> m_device;
     ComPtr<IDXGIFactory4> m_factory;
     ComPtr<IDXGIAdapter1> m_adapter;
-    ComPtr<ID3D12Debug> m_debugController;
+    ComPtr<ID3D12Debug1> m_debugController;
     bool m_debugEnabled = false;
 
     bool FindHardwareAdapter();
@@ -28,5 +28,4 @@ public:
     IDXGIFactory4* GetFactory() const;
     IDXGIAdapter1* GetAdapter() const;
     uint32_t GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE type) const;
-    bool IsDebugEnabled() const { return m_debugEnabled; }
 };
