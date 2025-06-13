@@ -24,8 +24,9 @@ public:
     bool SupportsFeature(DX12Features::FLAG feature) const;
 
     // Getters
-    ID3D12Device* GetDevice() const;
-    IDXGIFactory4* GetFactory() const;
-    IDXGIAdapter1* GetAdapter() const;
-    uint32_t GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE type) const;
+    ID3D12Device* GetDevice() const { return m_device.Get(); }
+    IDXGIFactory4* GetFactory() const { return m_factory.Get(); }
+    IDXGIAdapter1* GetAdapter() const { return m_adapter.Get(); }
+
+    uint32_t GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE type) const { return m_device->GetDescriptorHandleIncrementSize(type); }
 };

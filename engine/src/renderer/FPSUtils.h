@@ -51,6 +51,7 @@ namespace FPSUtils {
 
         if (elapsed >= std::chrono::milliseconds(updateIntervalMS)) {
             fps = frameCount / std::chrono::duration<float>(elapsed).count();
+            fps = std::round(fps);
             frameCount = 0;
             lastTime = now;
             outFPS = fps;

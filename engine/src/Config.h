@@ -10,15 +10,15 @@ struct EngineConfig {
     uint32_t windowHeight = 600;
     std::string windowTitle = "DirectX12 Game";
     bool fullscreen = false;
-    bool vsync = false;
+    bool vsync = true;
 
     // Renderer settings
-    bool enableDebugLayer = false;
+    bool enableDebugLayer = true;
     uint32_t backBufferCount = 2;
 
     // Performance settings
     uint32_t targetFPS = 180;
-    bool cappedFPS = true;
+    bool cappedFPS = false;
 };
 
 inline void PrintConfigStats(const EngineConfig& config) {

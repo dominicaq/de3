@@ -2,7 +2,7 @@
 
 Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     m_device = std::make_unique<DX12Device>();
-    if (!m_device->Initialize(true)) {
+    if (!m_device->Initialize(config.enableDebugLayer)) {
         throw std::runtime_error("Failed to initialize device");
     }
 
@@ -10,6 +10,12 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     m_commandManager = std::make_unique<CommandQueueManager>();
     if (!m_commandManager->Initialize(m_device->GetDevice())) {
         throw std::runtime_error("Failed to create command queues");
+    }
+
+    // Create resource manager
+    m_resourceManager = std::make_unique<ResourceManager>();
+    if (!m_resourceManager->Initialize(m_device.get(), m_commandManager->GetGraphicsQueue()->GetCommandQueue())) {
+        throw std::runtime_error("Failed to initialize resource manager");
     }
 
     // Create command recording objects
@@ -39,21 +45,29 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     }
 }
 
-void Renderer::Render(const EngineConfig& config) {
-    // Frame synchronization
+CommandList* Renderer::BeginFrame() {
+    m_resourceManager->BeginFrame();
     m_commandManager->GetGraphicsQueue()->Flush();
 
-    // Command recording setup
     if (!m_commandAllocator->Reset()) {
-        return;
+        return nullptr;
     }
     if (!m_commandList->Reset(m_commandAllocator.get())) {
-        return;
+        return nullptr;
     }
 
-    // TODO: Record commands here
+    // Transition back buffer to render target
+    ID3D12Resource* backBuffer = m_swapChain->GetCurrentBackBuffer();
+    m_commandList->TransitionBarrier(backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 
-    // Finalize and execute
+    return m_commandList.get();
+}
+
+void Renderer::EndFrame(const EngineConfig& config) {
+    // Transition back buffer to present
+    ID3D12Resource* backBuffer = m_swapChain->GetCurrentBackBuffer();
+    m_commandList->TransitionBarrier(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+
     if (!m_commandList->Close()) {
         return;
     }
@@ -61,10 +75,15 @@ void Renderer::Render(const EngineConfig& config) {
     ID3D12CommandList* commandLists[] = { m_commandList->GetCommandList() };
     m_commandManager->GetGraphicsQueue()->ExecuteCommandLists(1, commandLists);
 
-    // Present and sync
     uint64_t fenceValue = m_commandManager->GetGraphicsQueue()->Signal();
+    m_resourceManager->EndFrame();
     m_swapChain->Present(config.vsync);
     m_commandManager->GetGraphicsQueue()->WaitForFenceValue(fenceValue);
+}
+
+void Renderer::ClearBackBuffer(CommandList* cmdList, float clearColor[4]) {
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = m_swapChain->GetCurrentBackBufferRTV();
+    cmdList->ClearRenderTarget(rtv, clearColor);
 }
 
 void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {

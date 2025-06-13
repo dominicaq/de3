@@ -38,19 +38,28 @@ int main() {
 
     // Game loop
     while (!window.ShouldClose()) {
-        // Process Windows messages and input
         window.ProcessEvents();
+        CommandList* cmdList = renderer->BeginFrame();
 
-        // Render frame
-        renderer->Render(g_config);
+        // Rainbow color that cycles over time
+        static float time = 0.0f;
+        time += 0.016f; // ~60fps increment
+
+        float r = (sin(time * 2.0f) + 1.0f) * 0.5f;
+        float g = (sin(time * 2.0f + 2.094f) + 1.0f) * 0.5f; // 2π/3 offset
+        float b = (sin(time * 2.0f + 4.188f) + 1.0f) * 0.5f; // 4π/3 offset
+
+        float clearColor[4] = { r, g, b, 1.0f };
+        renderer->ClearBackBuffer(cmdList, clearColor);
+
+        renderer->EndFrame(g_config);
 
         if (g_config.cappedFPS && !g_config.vsync) {
             FPSUtils::LimitFrameRate(g_config.targetFPS);
         }
 
-        // FPS Logger
         float fps;
-        if (FPSUtils::UpdateFPSCounter(fps, 1000)) { // Update every second
+        if (FPSUtils::UpdateFPSCounter(fps, 1000)) {
             std::cout << "FPS: " << fps << std::endl;
         }
     }

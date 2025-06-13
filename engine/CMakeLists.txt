@@ -8,6 +8,15 @@ project(${PROJECT_NAME})
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# External dependencies
+add_library(D3D12MemoryAllocator STATIC
+    "../external/D3D12MemoryAllocator/src/D3D12MemAlloc.cpp"
+)
+
+target_include_directories(D3D12MemoryAllocator PUBLIC
+    "../external/D3D12MemoryAllocator/include"
+)
+
 # Collect all source files from src directory
 file(GLOB_RECURSE SOURCES
     "src/*.cpp"
@@ -26,22 +35,27 @@ add_executable(${PROJECT_NAME}
     ${HEADERS}
 )
 
-# Include src directory for headers
-target_include_directories(${PROJECT_NAME} PRIVATE src)
+# Include directories
+target_include_directories(${PROJECT_NAME} PRIVATE
+    src
+    interface
+    "../external/D3D12MemoryAllocator/include"
+)
 
-# Link Windows libraries + DirectX 12 libraries
+# Link libraries
 target_link_libraries(${PROJECT_NAME}
     user32
     gdi32
     kernel32
     dwmapi
-    d3d12          # DirectX 12
-    dxgi           # DXGI (swap chain, factory, adapters)
-    d3dcompiler    # HLSL shader compilation
-    dxguid         # DirectX GUIDs
+    d3d12
+    dxgi
+    d3dcompiler
+    dxguid
+    D3D12MemoryAllocator
 )
 
-# Add compiler definitions for Windows
+# Compiler definitions
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     WIN32_LEAN_AND_MEAN
     NOMINMAX

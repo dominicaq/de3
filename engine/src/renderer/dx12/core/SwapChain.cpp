@@ -55,7 +55,7 @@ bool SwapChain::Initialize(UINT width, UINT height) {
 
     m_device->GetFactory()->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_ALT_ENTER);
 
-    if (!CreateBackBuffers() || !InitializeSynchronization()) {
+    if (!CreateBackBuffers() || !CreateRTVs() || !InitializeSynchronization()) {
         return false;
     }
 
@@ -250,12 +250,38 @@ bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
     m_frameFenceValues.clear();
     m_frameFenceValues.resize(m_bufferCount, 0);
 
-    return CreateBackBuffers();
+    return CreateBackBuffers() && CreateRTVs();
 }
 
-ID3D12Resource* SwapChain::GetCurrentBackBuffer() const {
-    if (!m_initialized || m_currentBackBufferIndex >= m_backBuffers.size()) {
-        return nullptr;
+bool SwapChain::CreateRTVs() {
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+    rtvHeapDesc.NumDescriptors = m_bufferCount;
+    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+    HRESULT hr = m_device->GetDevice()->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvDescriptorHeap));
+    if (FAILED(hr)) {
+        printf("Failed to create RTV descriptor heap: 0x%08X\n", hr);
+        return false;
     }
-    return m_backBuffers[m_currentBackBufferIndex].Get();
+
+    m_rtvDescriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    for (UINT i = 0; i < m_bufferCount; i++) {
+        m_device->GetDevice()->CreateRenderTargetView(m_backBuffers[i].Get(), nullptr, rtvHandle);
+        rtvHandle.ptr += m_rtvDescriptorSize;
+    }
+
+    return true;
+}
+
+void SwapChain::ReleaseRTVs() {
+    m_rtvDescriptorHeap.Reset();
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE SwapChain::GetCurrentBackBufferRTV() const {
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += m_currentBackBufferIndex * m_rtvDescriptorSize;
+    return handle;
 }

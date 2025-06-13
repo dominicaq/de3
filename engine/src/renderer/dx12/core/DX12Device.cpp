@@ -19,7 +19,7 @@ bool DX12Device::Initialize(bool enableDebugController) {
     m_debugEnabled = false;
 
 #ifdef _DEBUG
-    // Enable debug layer FIRST, before any D3D12 calls
+    // Enable debug layer
     if (enableDebugController) {
         hr = D3D12GetDebugInterface(IID_PPV_ARGS(&m_debugController));
         if (SUCCEEDED(hr)) {
@@ -228,21 +228,4 @@ bool DX12Device::SupportsFeature(DX12Features::FLAG feature) const {
     default:
         return false;
     }
-}
-
-// Getters
-ID3D12Device* DX12Device::GetDevice() const {
-    return m_device.Get();
-}
-
-IDXGIFactory4* DX12Device::GetFactory() const {
-    return m_factory.Get();
-}
-
-IDXGIAdapter1* DX12Device::GetAdapter() const {
-    return m_adapter.Get();
-}
-
-uint32_t DX12Device::GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE type) const {
-    return m_device->GetDescriptorHandleIncrementSize(type);
 }
