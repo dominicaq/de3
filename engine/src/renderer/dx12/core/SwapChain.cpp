@@ -8,7 +8,6 @@ SwapChain::SwapChain(DX12Device* device, ID3D12CommandQueue* commandQueue, HWND 
     , m_hwnd(hwnd)
     , m_currentBackBufferIndex(0)
     , m_bufferCount(bufferCount)
-    , m_frameFenceEvent(nullptr)
     , m_initialized(false) {
 
     if (!Initialize(width, height)) {
@@ -17,14 +16,7 @@ SwapChain::SwapChain(DX12Device* device, ID3D12CommandQueue* commandQueue, HWND 
 }
 
 SwapChain::~SwapChain() {
-    if (m_initialized) {
-        WaitForAllFrames();
-    }
-
-    if (m_frameFenceEvent) {
-        CloseHandle(m_frameFenceEvent);
-        m_frameFenceEvent = nullptr;
-    }
+    ReleaseRTVs();
 }
 
 bool SwapChain::Initialize(UINT width, UINT height) {
@@ -55,33 +47,11 @@ bool SwapChain::Initialize(UINT width, UINT height) {
 
     m_device->GetFactory()->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_ALT_ENTER);
 
-    if (!CreateBackBuffers() || !CreateRTVs() || !InitializeSynchronization()) {
+    if (!CreateBackBuffers() || !CreateRTVs()) {
         return false;
     }
 
     m_initialized = true;
-    return true;
-}
-
-bool SwapChain::InitializeSynchronization() {
-    m_frameFenceValues.resize(m_bufferCount, 0);
-
-    HRESULT hr = m_device->GetDevice()->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_frameFence));
-    if (FAILED(hr)) {
-        printf("SwapChain CreateFence failed with HRESULT: 0x%08X\n", hr);
-        return false;
-    }
-
-    m_frameFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    if (!m_frameFenceEvent) {
-        printf("SwapChain CreateEvent failed\n");
-        return false;
-    }
-
-#ifdef _DEBUG
-    m_frameFence->SetName(L"SwapChain Frame Fence");
-#endif
-
     return true;
 }
 
@@ -157,68 +127,9 @@ bool SwapChain::Present(bool vsync) {
         return false;
     }
 
-    // Frame synchronization
-    const UINT64 currentFenceValue = m_nextFenceValue++;
-    m_frameFenceValues[m_currentBackBufferIndex] = currentFenceValue;
-
-    hr = m_commandQueue->Signal(m_frameFence.Get(), currentFenceValue);
-    if (FAILED(hr)) {
-        printf("SwapChain CommandQueue Signal failed with HRESULT: 0x%08X\n", hr);
-        return false;
-    }
-
+    // Update current back buffer index after present
     m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
-    WaitForFrame(m_currentBackBufferIndex);
-
     return true;
-}
-
-void SwapChain::WaitForFrame(UINT frameIndex) {
-    if (!m_initialized || frameIndex >= m_frameFenceValues.size()) {
-        return;
-    }
-
-    const UINT64 fenceValue = m_frameFenceValues[frameIndex];
-    if (fenceValue == 0 || m_frameFence->GetCompletedValue() >= fenceValue) {
-        return;
-    }
-
-    HRESULT hr = m_frameFence->SetEventOnCompletion(fenceValue, m_frameFenceEvent);
-    if (FAILED(hr)) {
-        printf("SwapChain SetEventOnCompletion failed with HRESULT: 0x%08X\n", hr);
-        return;
-    }
-
-    WaitForSingleObject(m_frameFenceEvent, INFINITE);
-}
-
-void SwapChain::WaitForAllFrames() {
-    if (!m_initialized || m_nextFenceValue <= 0) {
-        return;
-    }
-
-    const UINT64 lastFenceValue = m_nextFenceValue - 1;
-    if (m_frameFence->GetCompletedValue() < lastFenceValue) {
-        HRESULT hr = m_frameFence->SetEventOnCompletion(lastFenceValue, m_frameFenceEvent);
-        if (FAILED(hr)) {
-            printf("SwapChain WaitForAllFrames SetEventOnCompletion failed with HRESULT: 0x%08X\n", hr);
-            return;
-        }
-        WaitForSingleObject(m_frameFenceEvent, INFINITE);
-    }
-}
-
-bool SwapChain::IsFrameComplete(UINT frameIndex) const {
-    if (!m_initialized || frameIndex >= m_frameFenceValues.size()) {
-        return true;
-    }
-
-    const UINT64 fenceValue = m_frameFenceValues[frameIndex];
-    if (fenceValue == 0) {
-        return true;
-    }
-
-    return m_frameFence->GetCompletedValue() >= fenceValue;
 }
 
 bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
@@ -232,7 +143,6 @@ bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
         return false;
     }
 
-    WaitForAllFrames();
     ReleaseBackBuffers();
 
     HRESULT hr = m_swapChain->ResizeBuffers(newBufferCount, width, height,
@@ -247,13 +157,13 @@ bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
     m_bufferCount = newBufferCount;
     m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-    m_frameFenceValues.clear();
-    m_frameFenceValues.resize(m_bufferCount, 0);
-
     return CreateBackBuffers() && CreateRTVs();
 }
 
 bool SwapChain::CreateRTVs() {
+    // Release existing heap first
+    ReleaseRTVs();
+
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
     rtvHeapDesc.NumDescriptors = m_bufferCount;
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -281,7 +191,11 @@ void SwapChain::ReleaseRTVs() {
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE SwapChain::GetCurrentBackBufferRTV() const {
+    return GetBackBufferRTV(m_currentBackBufferIndex);
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE SwapChain::GetBackBufferRTV(UINT index) const {
     D3D12_CPU_DESCRIPTOR_HANDLE handle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += m_currentBackBufferIndex * m_rtvDescriptorSize;
+    handle.ptr += index * m_rtvDescriptorSize;
     return handle;
 }
