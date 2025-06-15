@@ -12,12 +12,6 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
         throw std::runtime_error("Failed to create command queues");
     }
 
-    // Create resource manager
-    m_resourceManager = std::make_unique<ResourceManager>();
-    if (!m_resourceManager->Initialize(m_device.get(), m_commandManager->GetGraphicsQueue()->GetCommandQueue())) {
-        throw std::runtime_error("Failed to initialize resource manager");
-    }
-
     // Create SwapChain - use graphics queue
     m_swapChain = std::make_unique<SwapChain>(
         m_device.get(),
@@ -43,13 +37,22 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
                                    D3D12_COMMAND_LIST_TYPE_DIRECT)) {
         throw std::runtime_error("Failed to create command list");
     }
+
+    // TODO: TEMP
+    m_testShader = std::make_unique<Shader>();
+    bool success = m_testShader->Initialize(m_device->GetDevice());
+    printf("Shader init result: %s\n", success ? "SUCCESS" : "FAILED");
+    if (!success) {
+        throw std::runtime_error("Failed to initialize test shader");
+    }
 }
 
 Renderer::~Renderer() {
     if (m_device && m_commandManager) {
-        WaitForAllFrames();
+        // Only wait for current frame - not all frames
+        WaitForFrame(m_currentFrameIndex);
     }
-    ReleaseFrameResources();
+    m_frameResources.clear();
 }
 
 bool Renderer::InitializeFrameResources() {
@@ -90,13 +93,7 @@ bool Renderer::InitializeFrameResources() {
     return true;
 }
 
-void Renderer::ReleaseFrameResources() {
-    m_frameResources.clear();
-}
-
 CommandList* Renderer::BeginFrame() {
-    m_resourceManager->BeginFrame();
-
     // Get current frame index from swap chain
     m_currentFrameIndex = m_swapChain->GetCurrentBackBufferIndex();
     FrameResources& currentFrame = m_frameResources[m_currentFrameIndex];
@@ -118,7 +115,11 @@ CommandList* Renderer::BeginFrame() {
 
     // Transition back buffer to render target
     ID3D12Resource* backBuffer = m_swapChain->GetCurrentBackBuffer();
-    m_commandList->TransitionBarrier(backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    m_commandList->TransitionBarrier(
+        backBuffer,
+        D3D12_RESOURCE_STATE_PRESENT,
+        D3D12_RESOURCE_STATE_RENDER_TARGET
+    );
 
     return m_commandList.get();
 }
@@ -128,7 +129,11 @@ void Renderer::EndFrame(const EngineConfig& config) {
 
     // Transition back buffer to present
     ID3D12Resource* backBuffer = m_swapChain->GetCurrentBackBuffer();
-    m_commandList->TransitionBarrier(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    m_commandList->TransitionBarrier(
+        backBuffer,
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_PRESENT
+    );
 
     if (!m_commandList->Close()) {
         printf("Failed to close command list for frame %u\n", m_currentFrameIndex);
@@ -149,9 +154,6 @@ void Renderer::EndFrame(const EngineConfig& config) {
         printf("Failed to signal fence for frame %u: 0x%08X\n", m_currentFrameIndex, hr);
     }
 
-    m_resourceManager->EndFrame();
-
-    // Present the frame
     m_swapChain->Present(config.vsync);
 }
 
@@ -227,9 +229,55 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
 
     // Recreate frame resources if buffer count changed
     if (newBufferCount != oldBufferCount) {
-        ReleaseFrameResources();
+        m_frameResources.clear();
         if (!InitializeFrameResources()) {
             printf("Failed to reinitialize frame resources after reconfigure\n");
         }
     }
+}
+
+void Renderer::TestShaderDraw(CommandList* cmdList) {
+    if (!m_testShader || !cmdList) {
+        printf("TestShaderDraw: Invalid shader or command list\n");
+        return;
+    }
+
+    ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
+    if (!d3dCmdList) {
+        printf("TestShaderDraw: Failed to get D3D12 command list\n");
+        return;
+    }
+
+    // Get render target
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = m_swapChain->GetCurrentBackBufferRTV();
+
+    // Set render target
+    d3dCmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+
+    // Set viewport
+    D3D12_VIEWPORT viewport = {};
+    viewport.TopLeftX = 0.0f;
+    viewport.TopLeftY = 0.0f;
+    viewport.Width = static_cast<FLOAT>(m_swapChain->GetWidth());
+    viewport.Height = static_cast<FLOAT>(m_swapChain->GetHeight());
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    d3dCmdList->RSSetViewports(1, &viewport);
+
+    // Set scissor rect (required!)
+    D3D12_RECT scissorRect = {};
+    scissorRect.left = 0;
+    scissorRect.top = 0;
+    scissorRect.right = static_cast<LONG>(m_swapChain->GetWidth());
+    scissorRect.bottom = static_cast<LONG>(m_swapChain->GetHeight());
+    d3dCmdList->RSSetScissorRects(1, &scissorRect);
+
+    // Set pipeline state and root signature
+    m_testShader->SetPipelineState(d3dCmdList);
+
+    // Set primitive topology
+    d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    // Draw the triangle
+    d3dCmdList->DrawInstanced(3, 1, 0, 0);
 }

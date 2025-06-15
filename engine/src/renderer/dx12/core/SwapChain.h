@@ -27,13 +27,16 @@ public:
     D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferRTV() const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetBackBufferRTV(UINT index) const;
 
+    // Getters
+    UINT GetWidth() const { return m_width; }
+    UINT GetHeight() const { return m_height; }
+
 private:
     bool Initialize(UINT width, UINT height);
     bool CreateSwapChain(UINT width, UINT height);
     bool CreateBackBuffers();
     bool CreateRTVs();
     void ReleaseBackBuffers();
-    void ReleaseRTVs();
 
     DX12Device* m_device;
     ID3D12CommandQueue* m_commandQueue;
@@ -44,6 +47,9 @@ private:
 
     ComPtr<ID3D12DescriptorHeap> m_rtvDescriptorHeap;
     UINT m_rtvDescriptorSize;
+
+    UINT m_width;
+    UINT m_height;
 
     UINT m_currentBackBufferIndex;
     UINT m_bufferCount;

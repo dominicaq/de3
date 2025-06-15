@@ -1,4 +1,5 @@
 #pragma once
+
 #include "../Config.h"
 #include "dx12/core/DX12Device.h"
 #include "dx12/core/SwapChain.h"
@@ -6,10 +7,9 @@
 // Command System
 #include "dx12/core/CommandAllocator.h"
 #include "dx12/core/CommandList.h"
+#include "dx12/resources/FrameResources.h"
+#include "dx12/resources/Shader.h"
 #include "dx12/CommandQueueManager.h"
-#include "dx12/ResourceManager.h"
-
-#include "FrameResources.h"
 
 class Renderer {
 public:
@@ -26,9 +26,15 @@ public:
     void WaitForAllFrames();
     bool IsFrameComplete(UINT frameIndex) const;
 
+    // Debugging
+    void DebugPrintValidationMessages() { m_device->PrintAndClearInfoQueue(); }
+
+    // TODO: TEMP
+    std::unique_ptr<Shader> m_testShader;
+    void TestShaderDraw(CommandList* cmdList);
+
 private:
     bool InitializeFrameResources();
-    void ReleaseFrameResources();
 
     // DX12 Context
     std::unique_ptr<DX12Device> m_device;
@@ -42,7 +48,4 @@ private:
 
     // Shared command list (reset per frame with different allocators)
     std::unique_ptr<CommandList> m_commandList;
-
-    // Resources
-    std::unique_ptr<ResourceManager> m_resourceManager;
 };

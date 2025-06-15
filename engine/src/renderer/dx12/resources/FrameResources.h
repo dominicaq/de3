@@ -1,6 +1,6 @@
 #pragma once
 
-#include "dx12/core/CommandAllocator.h"
+#include "../core/CommandAllocator.h"
 
 struct FrameResources {
     std::unique_ptr<CommandAllocator> commandAllocator;

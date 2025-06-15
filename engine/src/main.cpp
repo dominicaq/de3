@@ -37,6 +37,7 @@ int main() {
     PrintConfigStats(g_config);
 
     // Game loop
+    int frameCount = 0;
     while (!window.ShouldClose()) {
         window.ProcessEvents();
         CommandList* cmdList = renderer->BeginFrame();
@@ -51,8 +52,14 @@ int main() {
 
         float clearColor[4] = { r, g, b, 1.0f };
         renderer->ClearBackBuffer(cmdList, clearColor);
-
+        renderer->TestShaderDraw(cmdList);
         renderer->EndFrame(g_config);
+
+#ifdef _DEBUG
+        if (frameCount % g_config.targetFPS == 0) {
+            renderer->DebugPrintValidationMessages();
+        }
+#endif
 
         if (g_config.cappedFPS && !g_config.vsync) {
             FPSUtils::LimitFrameRate(g_config.targetFPS);

@@ -8,7 +8,9 @@ SwapChain::SwapChain(DX12Device* device, ID3D12CommandQueue* commandQueue, HWND 
     , m_hwnd(hwnd)
     , m_currentBackBufferIndex(0)
     , m_bufferCount(bufferCount)
-    , m_initialized(false) {
+    , m_initialized(false)
+    , m_width(width)
+    , m_height(height) {
 
     if (!Initialize(width, height)) {
         return;
@@ -16,7 +18,8 @@ SwapChain::SwapChain(DX12Device* device, ID3D12CommandQueue* commandQueue, HWND 
 }
 
 SwapChain::~SwapChain() {
-    ReleaseRTVs();
+    ReleaseBackBuffers();
+    m_rtvDescriptorHeap.Reset();
 }
 
 bool SwapChain::Initialize(UINT width, UINT height) {
@@ -138,20 +141,28 @@ bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
     }
 
     UINT newBufferCount = (bufferCount == 0) ? m_bufferCount : bufferCount;
-
     if (newBufferCount < 2 || newBufferCount > 16 || width == 0 || height == 0) {
         return false;
     }
 
     ReleaseBackBuffers();
 
-    HRESULT hr = m_swapChain->ResizeBuffers(newBufferCount, width, height,
-        DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+
+    HRESULT hr = m_swapChain->ResizeBuffers(
+        newBufferCount,
+        width,
+        height,
+        DXGI_FORMAT_R8G8B8A8_UNORM,
+        DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
+    );
 
     if (FAILED(hr)) {
         printf("SwapChain ResizeBuffers failed with HRESULT: 0x%08X\n", hr);
         return false;
     }
+
+    m_width = width;
+    m_height = height;
 
     // Update state
     m_bufferCount = newBufferCount;
@@ -162,7 +173,7 @@ bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
 
 bool SwapChain::CreateRTVs() {
     // Release existing heap first
-    ReleaseRTVs();
+    m_rtvDescriptorHeap.Reset();
 
     D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
     rtvHeapDesc.NumDescriptors = m_bufferCount;
@@ -184,10 +195,6 @@ bool SwapChain::CreateRTVs() {
     }
 
     return true;
-}
-
-void SwapChain::ReleaseRTVs() {
-    m_rtvDescriptorHeap.Reset();
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE SwapChain::GetCurrentBackBufferRTV() const {

@@ -16,21 +16,24 @@ DX12Device::~DX12Device() {
 bool DX12Device::Initialize(bool enableDebugController) {
     HRESULT hr;
     UINT createFactoryFlags = 0;
-    m_debugEnabled = false;
+    m_debugEnabled = enableDebugController;
 
 #ifdef _DEBUG
-    // Enable debug layer
+    // Enable debug layer BEFORE creating factory and device
     if (enableDebugController) {
-        hr = D3D12GetDebugInterface(IID_PPV_ARGS(&m_debugController));
-        if (SUCCEEDED(hr)) {
-            m_debugController->EnableDebugLayer();
-            m_debugController->SetEnableGPUBasedValidation(true);
-            m_debugController->SetEnableSynchronizedCommandQueueValidation(true);
+        ComPtr<ID3D12Debug> debugController;
+        if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
+            debugController->EnableDebugLayer();
+            m_debugController = debugController;
             m_debugEnabled = true;
+            printf("D3D12 Debug layer enabled\n");
+
+            // Enable additional debug features
+            createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
         } else {
-            printf("D3D12GetDebugInterface failed with HRESULT: 0x%08X\n", hr);
+            printf("Failed to enable D3D12 debug layer\n");
+            m_debugEnabled = false;
         }
-        createFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
     }
 #endif
 
@@ -58,13 +61,17 @@ bool DX12Device::Initialize(bool enableDebugController) {
     }
 
 #ifdef _DEBUG
-    // Configure debug breaks after device creation
+    // Configure debug info queue AFTER device creation
     if (m_debugEnabled && m_device) {
-        ComPtr<ID3D12InfoQueue> infoQueue;
-        if (SUCCEEDED(m_device->QueryInterface(IID_PPV_ARGS(&infoQueue)))) {
-            infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
-            infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
-            infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
+        if (SUCCEEDED(m_device->QueryInterface(IID_PPV_ARGS(&m_infoQueue)))) {
+            // Set break on severe errors
+            m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+            m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+            m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, FALSE); // Don't break on warnings
+
+            printf("D3D12 Info Queue configured\n");
+        } else {
+            printf("Failed to get D3D12 Info Queue interface\n");
         }
     }
 #endif
@@ -228,4 +235,49 @@ bool DX12Device::SupportsFeature(DX12Features::FLAG feature) const {
     default:
         return false;
     }
+}
+
+void DX12Device::PrintAndClearInfoQueue() const {
+    if (!m_device || !m_debugEnabled) {
+        return;
+    }
+
+    UINT64 numMessages = m_infoQueue->GetNumStoredMessages();
+    if (numMessages == 0) {
+        return;  // No messages, nothing to print
+    }
+
+    printf("=== D3D12 Debug Messages (%llu) ===\n", numMessages);
+
+    for (UINT64 i = 0; i < numMessages; i++) {
+        SIZE_T messageLength = 0;
+        if (FAILED(m_infoQueue->GetMessage(i, nullptr, &messageLength)) || messageLength == 0) {
+            continue;
+        }
+
+        std::vector<char> messageData(messageLength);
+        D3D12_MESSAGE* message = reinterpret_cast<D3D12_MESSAGE*>(messageData.data());
+
+        if (FAILED(m_infoQueue->GetMessage(i, message, &messageLength))) {
+            continue;
+        }
+
+        // Simple severity classification
+        const char* severityStr = "INFO";
+        switch (message->Severity) {
+            case D3D12_MESSAGE_SEVERITY_CORRUPTION:
+            case D3D12_MESSAGE_SEVERITY_ERROR:
+                severityStr = "ERROR";
+                break;
+            case D3D12_MESSAGE_SEVERITY_WARNING:
+                severityStr = "WARNING";
+                break;
+        }
+
+        printf("[%s] %s\n", severityStr, message->pDescription);
+    }
+
+    // Clear messages after printing
+    m_infoQueue->ClearStoredMessages();
+    printf("=== End Debug Messages ===\n");
 }

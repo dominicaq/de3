@@ -13,7 +13,8 @@ struct EngineConfig {
     bool vsync = true;
 
     // Renderer settings
-    bool enableDebugLayer = true;
+    bool enableDebugLayer = _DEBUG;
+    uint32_t debugFrameInterval = 60;
     uint32_t backBufferCount = 2;
 
     // Performance settings
