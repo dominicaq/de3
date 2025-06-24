@@ -19,27 +19,31 @@ struct FrameResources {
     FrameResources(const FrameResources&) = delete;
     FrameResources& operator=(const FrameResources&) = delete;
 
-    // Movable
+    // Move semantics
     FrameResources(FrameResources&& other) noexcept
         : commandAllocator(std::move(other.commandAllocator))
         , frameFence(std::move(other.frameFence))
         , fenceValue(other.fenceValue)
-        , fenceEvent(other.fenceEvent) {
+        , fenceEvent(other.fenceEvent)
+    {
         other.fenceEvent = nullptr;
         other.fenceValue = 0;
     }
 
     FrameResources& operator=(FrameResources&& other) noexcept {
         if (this != &other) {
+            // Clean up current resources
             if (fenceEvent) {
                 CloseHandle(fenceEvent);
             }
 
+            // Move from other
             commandAllocator = std::move(other.commandAllocator);
             frameFence = std::move(other.frameFence);
             fenceValue = other.fenceValue;
             fenceEvent = other.fenceEvent;
 
+            // Clear other
             other.fenceEvent = nullptr;
             other.fenceValue = 0;
         }

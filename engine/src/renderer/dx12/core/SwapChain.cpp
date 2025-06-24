@@ -2,10 +2,11 @@
 #include <string>
 
 SwapChain::SwapChain(DX12Device* device, ID3D12CommandQueue* commandQueue, HWND hwnd,
-                     UINT width, UINT height, UINT bufferCount)
+                     UINT width, UINT height, UINT bufferCount, DXGI_FORMAT bufferFormat)
     : m_device(device)
     , m_commandQueue(commandQueue)
     , m_hwnd(hwnd)
+    , m_bufferFormat(bufferFormat)
     , m_currentBackBufferIndex(0)
     , m_bufferCount(bufferCount)
     , m_initialized(false)
@@ -19,7 +20,6 @@ SwapChain::SwapChain(DX12Device* device, ID3D12CommandQueue* commandQueue, HWND 
 
 SwapChain::~SwapChain() {
     ReleaseBackBuffers();
-    m_rtvDescriptorHeap.Reset();
 }
 
 bool SwapChain::Initialize(UINT width, UINT height) {
@@ -50,7 +50,7 @@ bool SwapChain::Initialize(UINT width, UINT height) {
 
     m_device->GetFactory()->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_ALT_ENTER);
 
-    if (!CreateBackBuffers() || !CreateRTVs()) {
+    if (!CreateBackBuffers()) {
         return false;
     }
 
@@ -63,7 +63,7 @@ bool SwapChain::CreateSwapChain(UINT width, UINT height) {
     swapChainDesc.BufferCount = m_bufferCount;
     swapChainDesc.Width = width;
     swapChainDesc.Height = height;
-    swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    swapChainDesc.Format = m_bufferFormat;
     swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     swapChainDesc.SampleDesc.Count = 1;
@@ -88,6 +88,9 @@ bool SwapChain::CreateSwapChain(UINT width, UINT height) {
     }
 
     m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
+    m_width = width;
+    m_height = height;
+
     return true;
 }
 
@@ -114,6 +117,7 @@ void SwapChain::ReleaseBackBuffers() {
     for (auto& buffer : m_backBuffers) {
         buffer.Reset();
     }
+    m_backBuffers.clear();
 }
 
 bool SwapChain::Present(bool vsync) {
@@ -145,14 +149,14 @@ bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
         return false;
     }
 
+    // Release back buffers before resize
     ReleaseBackBuffers();
-
 
     HRESULT hr = m_swapChain->ResizeBuffers(
         newBufferCount,
         width,
         height,
-        DXGI_FORMAT_R8G8B8A8_UNORM,
+        m_bufferFormat,
         DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
     );
 
@@ -161,48 +165,12 @@ bool SwapChain::Reconfigure(UINT width, UINT height, UINT bufferCount) {
         return false;
     }
 
+    // Update state
     m_width = width;
     m_height = height;
-
-    // Update state
     m_bufferCount = newBufferCount;
     m_currentBackBufferIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-    return CreateBackBuffers() && CreateRTVs();
-}
-
-bool SwapChain::CreateRTVs() {
-    // Release existing heap first
-    m_rtvDescriptorHeap.Reset();
-
-    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-    rtvHeapDesc.NumDescriptors = m_bufferCount;
-    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-
-    HRESULT hr = m_device->GetDevice()->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvDescriptorHeap));
-    if (FAILED(hr)) {
-        printf("Failed to create RTV descriptor heap: 0x%08X\n", hr);
-        return false;
-    }
-
-    m_rtvDescriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-    for (UINT i = 0; i < m_bufferCount; i++) {
-        m_device->GetDevice()->CreateRenderTargetView(m_backBuffers[i].Get(), nullptr, rtvHandle);
-        rtvHandle.ptr += m_rtvDescriptorSize;
-    }
-
-    return true;
-}
-
-D3D12_CPU_DESCRIPTOR_HANDLE SwapChain::GetCurrentBackBufferRTV() const {
-    return GetBackBufferRTV(m_currentBackBufferIndex);
-}
-
-D3D12_CPU_DESCRIPTOR_HANDLE SwapChain::GetBackBufferRTV(UINT index) const {
-    D3D12_CPU_DESCRIPTOR_HANDLE handle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += index * m_rtvDescriptorSize;
-    return handle;
+    // Recreate back buffers
+    return CreateBackBuffers();
 }

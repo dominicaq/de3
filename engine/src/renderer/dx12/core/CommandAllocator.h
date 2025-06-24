@@ -11,10 +11,7 @@ public:
     CommandAllocator(const CommandAllocator&) = delete;
     CommandAllocator& operator=(const CommandAllocator&) = delete;
 
-    // Movable
-    CommandAllocator(CommandAllocator&&) = default;
-    CommandAllocator& operator=(CommandAllocator&&) = default;
-
+    // Life Cycle Management
     bool Initialize(ID3D12Device* device, D3D12_COMMAND_LIST_TYPE type = D3D12_COMMAND_LIST_TYPE_DIRECT);
     bool Reset();
     bool IsReady() const { return m_allocator != nullptr; }

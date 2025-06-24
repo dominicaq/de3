@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <iostream>
 
+#include <dxgi1_6.h>  // For DXGI_FORMAT
+
 struct EngineConfig {
     // Window settings
     uint32_t windowWidth = 800;
@@ -16,6 +18,7 @@ struct EngineConfig {
     bool enableDebugLayer = _DEBUG;
     uint32_t debugFrameInterval = 60;
     uint32_t backBufferCount = 2;
+    DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 
     // Performance settings
     uint32_t targetFPS = 180;

@@ -19,10 +19,16 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
         hwnd,
         config.windowWidth,
         config.windowHeight,
-        config.backBufferCount
+        config.backBufferCount,
+        config.backBufferFormat
     );
     if (!m_swapChain->IsInitialized()) {
         throw std::runtime_error("Failed to create swap chain");
+    }
+
+    // Create RTV descriptor heap and views for back buffers
+    if (!CreateBackBufferRTVs()) {
+        throw std::runtime_error("Failed to create back buffer RTVs");
     }
 
     // Initialize per-frame resources
@@ -52,7 +58,68 @@ Renderer::~Renderer() {
         // Only wait for current frame - not all frames
         WaitForFrame(m_currentFrameIndex);
     }
+    ReleaseBackBufferRTVs();
     m_frameResources.clear();
+}
+
+bool Renderer::CreateBackBufferRTVs() {
+    // Release existing heap first
+    ReleaseBackBufferRTVs();
+
+    UINT bufferCount = m_swapChain->GetBufferCount();
+
+    // Create RTV descriptor heap
+    D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+    rtvHeapDesc.NumDescriptors = bufferCount;
+    rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+    HRESULT hr = m_device->GetDevice()->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvDescriptorHeap));
+    if (FAILED(hr)) {
+        printf("Failed to create RTV descriptor heap: 0x%08X\n", hr);
+        return false;
+    }
+
+#ifdef _DEBUG
+    m_rtvDescriptorHeap->SetName(L"Back Buffer RTV Descriptor Heap");
+#endif
+
+    // Get descriptor increment size
+    m_rtvDescriptorSize = m_device->GetDevice()->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+    // Create RTVs for each back buffer
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvHandle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    for (UINT i = 0; i < bufferCount; i++) {
+        ID3D12Resource* backBuffer = m_swapChain->GetBackBuffer(i);
+        if (!backBuffer) {
+            printf("Failed to get back buffer %u\n", i);
+            return false;
+        }
+
+        m_device->GetDevice()->CreateRenderTargetView(backBuffer, nullptr, rtvHandle);
+        rtvHandle.ptr += m_rtvDescriptorSize;
+    }
+
+    return true;
+}
+
+void Renderer::ReleaseBackBufferRTVs() {
+    m_rtvDescriptorHeap.Reset();
+    m_rtvDescriptorSize = 0;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetCurrentBackBufferRTV() const {
+    return GetBackBufferRTV(m_swapChain->GetCurrentBackBufferIndex());
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetBackBufferRTV(UINT index) const {
+    if (!m_rtvDescriptorHeap) {
+        return {};
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE handle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += index * m_rtvDescriptorSize;
+    return handle;
 }
 
 bool Renderer::InitializeFrameResources() {
@@ -205,9 +272,63 @@ bool Renderer::IsFrameComplete(UINT frameIndex) const {
     return frame.frameFence->GetCompletedValue() >= frame.fenceValue;
 }
 
-void Renderer::ClearBackBuffer(CommandList* cmdList, float clearColor[4]) {
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = m_swapChain->GetCurrentBackBufferRTV();
-    cmdList->ClearRenderTarget(rtv, clearColor);
+void Renderer::SetupRenderTarget(CommandList* cmdList) {
+    if (!cmdList) {
+        printf("SetupRenderTarget: Invalid command list\n");
+        return;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = GetCurrentBackBufferRTV();
+    cmdList->GetCommandList()->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+}
+
+void Renderer::SetupViewportAndScissor(CommandList* cmdList) {
+    if (!cmdList) {
+        printf("SetupViewportAndScissor: Invalid command list\n");
+        return;
+    }
+
+    ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
+
+    // Set viewport
+    D3D12_VIEWPORT viewport = {};
+    viewport.TopLeftX = 0.0f;
+    viewport.TopLeftY = 0.0f;
+    viewport.Width = static_cast<FLOAT>(m_swapChain->GetWidth());
+    viewport.Height = static_cast<FLOAT>(m_swapChain->GetHeight());
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    d3dCmdList->RSSetViewports(1, &viewport);
+
+    // Set scissor rect
+    D3D12_RECT scissorRect = {};
+    scissorRect.left = 0;
+    scissorRect.top = 0;
+    scissorRect.right = static_cast<LONG>(m_swapChain->GetWidth());
+    scissorRect.bottom = static_cast<LONG>(m_swapChain->GetHeight());
+    d3dCmdList->RSSetScissorRects(1, &scissorRect);
+}
+
+void Renderer::ClearBackBuffer(CommandList* cmdList, const float clearColor[4]) {
+    if (!cmdList || !clearColor) {
+        printf("ClearBackBuffer: Invalid command list or clear color\n");
+        return;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv = GetCurrentBackBufferRTV();
+    cmdList->GetCommandList()->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+}
+
+UINT Renderer::GetBackBufferWidth() const {
+    return m_swapChain ? m_swapChain->GetWidth() : 0;
+}
+
+UINT Renderer::GetBackBufferHeight() const {
+    return m_swapChain ? m_swapChain->GetHeight() : 0;
+}
+
+DXGI_FORMAT Renderer::GetBackBufferFormat() const {
+    return m_swapChain ? m_swapChain->GetFormat() : DXGI_FORMAT_UNKNOWN;
 }
 
 void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
@@ -222,8 +343,17 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
     UINT oldBufferCount = m_swapChain->GetBufferCount();
     UINT newBufferCount = (bufferCount == 0) ? oldBufferCount : bufferCount;
 
+    // Release RTVs before swap chain reconfigure
+    ReleaseBackBufferRTVs();
+
     if (!m_swapChain->Reconfigure(width, height, bufferCount)) {
         printf("Failed to reconfigure swap chain\n");
+        return;
+    }
+
+    // Recreate RTVs for new back buffers
+    if (!CreateBackBufferRTVs()) {
+        printf("Failed to recreate back buffer RTVs after reconfigure\n");
         return;
     }
 
@@ -247,30 +377,6 @@ void Renderer::TestShaderDraw(CommandList* cmdList) {
         printf("TestShaderDraw: Failed to get D3D12 command list\n");
         return;
     }
-
-    // Get render target
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = m_swapChain->GetCurrentBackBufferRTV();
-
-    // Set render target
-    d3dCmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-
-    // Set viewport
-    D3D12_VIEWPORT viewport = {};
-    viewport.TopLeftX = 0.0f;
-    viewport.TopLeftY = 0.0f;
-    viewport.Width = static_cast<FLOAT>(m_swapChain->GetWidth());
-    viewport.Height = static_cast<FLOAT>(m_swapChain->GetHeight());
-    viewport.MinDepth = 0.0f;
-    viewport.MaxDepth = 1.0f;
-    d3dCmdList->RSSetViewports(1, &viewport);
-
-    // Set scissor rect (required!)
-    D3D12_RECT scissorRect = {};
-    scissorRect.left = 0;
-    scissorRect.top = 0;
-    scissorRect.right = static_cast<LONG>(m_swapChain->GetWidth());
-    scissorRect.bottom = static_cast<LONG>(m_swapChain->GetHeight());
-    d3dCmdList->RSSetScissorRects(1, &scissorRect);
 
     // Set pipeline state and root signature
     m_testShader->SetPipelineState(d3dCmdList);

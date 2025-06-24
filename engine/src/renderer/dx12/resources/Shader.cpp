@@ -32,14 +32,20 @@ float4 PSMain(VSOutput input) : SV_TARGET {
 )";
 
 bool Shader::Initialize(ID3D12Device* device) {
+    if (!device) {
+        printf("Shader::Initialize - NULL device!\n");
+        return false;
+    }
+
     HRESULT hr;
     ComPtr<ID3DBlob> vs, ps, errorBlob;
 
+    printf("Compiling vertex shader...\n");
     // Compile vertex shader
     hr = D3DCompile(
         g_shaderSource,
         strlen(g_shaderSource),
-        nullptr,
+        "TestShader.hlsl",
         nullptr,
         nullptr,
         "VSMain",
@@ -51,17 +57,20 @@ bool Shader::Initialize(ID3D12Device* device) {
     );
 
     if (FAILED(hr)) {
+        printf("VS Compile FAILED: 0x%08X\n", hr);
         if (errorBlob) {
-            printf("VS Compile Error: %s\n", (char*)errorBlob->GetBufferPointer());
+            printf("VS Error: %s\n", (char*)errorBlob->GetBufferPointer());
         }
         return false;
     }
 
+    printf("Compiling pixel shader...\n");
     // Compile pixel shader
+    errorBlob.Reset();
     hr = D3DCompile(
         g_shaderSource,
         strlen(g_shaderSource),
-        nullptr,
+        "TestShader.hlsl",
         nullptr,
         nullptr,
         "PSMain",
@@ -73,21 +82,70 @@ bool Shader::Initialize(ID3D12Device* device) {
     );
 
     if (FAILED(hr)) {
+        printf("PS Compile FAILED: 0x%08X\n", hr);
         if (errorBlob) {
-            printf("PS Compile Error: %s\n", (char*)errorBlob->GetBufferPointer());
+            printf("PS Error: %s\n", (char*)errorBlob->GetBufferPointer());
         }
         return false;
     }
 
-    // Create empty root signature
+    // Create properly configured static samplers to prevent warnings
+    D3D12_STATIC_SAMPLER_DESC staticSamplers[4] = {};
+
+    // Point sampler - properly configured
+    staticSamplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+    staticSamplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[0].MipLODBias = 0.0f;
+    staticSamplers[0].MaxAnisotropy = 1;
+    staticSamplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER; // Proper for non-comparison
+    staticSamplers[0].BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+    staticSamplers[0].MinLOD = 0.0f;
+    staticSamplers[0].MaxLOD = D3D12_FLOAT32_MAX;
+    staticSamplers[0].ShaderRegister = 0;
+    staticSamplers[0].RegisterSpace = 0;
+    staticSamplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+    // Linear sampler - properly configured
+    staticSamplers[1] = staticSamplers[0]; // Copy base settings
+    staticSamplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    staticSamplers[1].ShaderRegister = 1;
+
+    // Anisotropic sampler - properly configured
+    staticSamplers[2] = staticSamplers[0]; // Copy base settings
+    staticSamplers[2].Filter = D3D12_FILTER_ANISOTROPIC;
+    staticSamplers[2].MaxAnisotropy = 16;
+    staticSamplers[2].ShaderRegister = 2;
+
+    // Comparison sampler - properly configured for depth/shadow sampling
+    staticSamplers[3].Filter = D3D12_FILTER_COMPARISON_MIN_MAG_MIP_POINT; // Proper comparison filter
+    staticSamplers[3].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[3].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[3].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    staticSamplers[3].MipLODBias = 0.0f;
+    staticSamplers[3].MaxAnisotropy = 1;
+    staticSamplers[3].ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL; // Now this makes sense
+    staticSamplers[3].BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+    staticSamplers[3].MinLOD = 0.0f;
+    staticSamplers[3].MaxLOD = D3D12_FLOAT32_MAX;
+    staticSamplers[3].ShaderRegister = 3;
+    staticSamplers[3].RegisterSpace = 0;
+    staticSamplers[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+    // Create root signature with static samplers
     D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
     rootSigDesc.NumParameters = 0;
     rootSigDesc.pParameters = nullptr;
-    rootSigDesc.NumStaticSamplers = 0;
-    rootSigDesc.pStaticSamplers = nullptr;
-    rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    rootSigDesc.NumStaticSamplers = _countof(staticSamplers);
+    rootSigDesc.pStaticSamplers = staticSamplers;
+    rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+                        D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS |
+                        D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
+                        D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
     ComPtr<ID3DBlob> signature;
+    errorBlob.Reset();
     hr = D3D12SerializeRootSignature(
         &rootSigDesc,
         D3D_ROOT_SIGNATURE_VERSION_1,
@@ -96,8 +154,9 @@ bool Shader::Initialize(ID3D12Device* device) {
     );
 
     if (FAILED(hr)) {
+        printf("Root Signature Serialize FAILED: 0x%08X\n", hr);
         if (errorBlob) {
-            printf("Root Signature Serialize Error: %s\n", (char*)errorBlob->GetBufferPointer());
+            printf("Root Sig Error: %s\n", (char*)errorBlob->GetBufferPointer());
         }
         return false;
     }
@@ -110,7 +169,7 @@ bool Shader::Initialize(ID3D12Device* device) {
     );
 
     if (FAILED(hr)) {
-        printf("CreateRootSignature failed: 0x%08X\n", hr);
+        printf("CreateRootSignature FAILED: 0x%08X\n", hr);
         return false;
     }
 
@@ -164,7 +223,7 @@ bool Shader::Initialize(ID3D12Device* device) {
     psoDesc.DepthStencilState.FrontFace = defaultStencilOp;
     psoDesc.DepthStencilState.BackFace = defaultStencilOp;
 
-    // Input layout
+    // Input layout (none for our vertex shader)
     psoDesc.InputLayout.pInputElementDescs = nullptr;
     psoDesc.InputLayout.NumElements = 0;
 
@@ -173,7 +232,7 @@ bool Shader::Initialize(ID3D12Device* device) {
 
     // Render target formats
     psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;  // Must match swap chain format
     psoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
 
     psoDesc.SampleMask = UINT_MAX;
@@ -186,7 +245,7 @@ bool Shader::Initialize(ID3D12Device* device) {
 
     hr = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState));
     if (FAILED(hr)) {
-        printf("CreateGraphicsPipelineState failed: 0x%08X\n", hr);
+        printf("CreateGraphicsPipelineState FAILED: 0x%08X\n", hr);
         return false;
     }
 

@@ -40,7 +40,10 @@ int main() {
     int frameCount = 0;
     while (!window.ShouldClose()) {
         window.ProcessEvents();
+        // Begin frame and get command list
         CommandList* cmdList = renderer->BeginFrame();
+        renderer->SetupRenderTarget(cmdList);
+        renderer->SetupViewportAndScissor(cmdList);
 
         // Rainbow color that cycles over time
         static float time = 0.0f;
@@ -49,10 +52,15 @@ int main() {
         float r = (sin(time * 2.0f) + 1.0f) * 0.5f;
         float g = (sin(time * 2.0f + 2.094f) + 1.0f) * 0.5f; // 2π/3 offset
         float b = (sin(time * 2.0f + 4.188f) + 1.0f) * 0.5f; // 4π/3 offset
-
         float clearColor[4] = { r, g, b, 1.0f };
+
+        // Clear back buffer with animated rainbow color
         renderer->ClearBackBuffer(cmdList, clearColor);
+
+        // Draw test triangle
         renderer->TestShaderDraw(cmdList);
+
+        // Finish frame and present
         renderer->EndFrame(g_config);
 
 #ifdef _DEBUG
