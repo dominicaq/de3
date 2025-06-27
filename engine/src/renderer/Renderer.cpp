@@ -45,8 +45,50 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     }
 
     // TODO: TEMP
+    // Create test shader
+    ShaderDescription triangleShaderDesc;
+    triangleShaderDesc.name = "BasicTriangle";
+    triangleShaderDesc.renderTargetFormat = m_swapChain->GetFormat(); // Use actual swap chain format
+    triangleShaderDesc.vertexShaderSource = R"(
+    struct VSOutput {
+        float4 position : SV_POSITION;
+        float3 color : COLOR;
+    };
+
+    VSOutput VSMain(uint vertexID : SV_VertexID) {
+        VSOutput output;
+
+        // Counter-clockwise triangle (proper winding for back-face culling)
+        if (vertexID == 0) {
+            output.position = float4(0.0, 0.5, 0.0, 1.0);   // Top vertex
+            output.color = float3(1.0, 0.0, 0.0);           // Red
+        }
+        else if (vertexID == 1) {
+            output.position = float4(0.5, -0.5, 0.0, 1.0);  // Bottom right
+            output.color = float3(0.0, 1.0, 0.0);           // Green
+        }
+        else {
+            output.position = float4(-0.5, -0.5, 0.0, 1.0); // Bottom left
+            output.color = float3(0.0, 0.0, 1.0);           // Blue
+        }
+
+        return output;
+    }
+    )";
+
+    triangleShaderDesc.pixelShaderSource = R"(
+    struct VSOutput {
+        float4 position : SV_POSITION;
+        float3 color : COLOR;
+    };
+
+    float4 PSMain(VSOutput input) : SV_TARGET {
+        return float4(input.color, 1.0);
+    }
+    )";
+
     m_testShader = std::make_unique<Shader>();
-    bool success = m_testShader->Initialize(m_device->GetDevice());
+    bool success = m_testShader->Initialize(m_device->GetDevice(), triangleShaderDesc);
     printf("Shader init result: %s\n", success ? "SUCCESS" : "FAILED");
     if (!success) {
         throw std::runtime_error("Failed to initialize test shader");
