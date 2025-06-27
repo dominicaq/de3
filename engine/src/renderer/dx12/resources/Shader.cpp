@@ -159,6 +159,14 @@ bool Shader::CreateRootSignature(ID3D12Device* device) {
     return true;
 }
 
+void Shader::SetPipelineState(ID3D12GraphicsCommandList* cmdList) {
+    if (!cmdList) {
+        return;
+    }
+    cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+    cmdList->SetPipelineState(m_pipelineState.Get());
+}
+
 bool Shader::CreatePipelineState(ID3D12Device* device, const ShaderDescription& desc,
                                 ID3DBlob* vsBlob, ID3DBlob* psBlob) {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
@@ -210,9 +218,14 @@ bool Shader::CreatePipelineState(ID3D12Device* device, const ShaderDescription& 
     psoDesc.DepthStencilState.FrontFace = defaultStencilOp;
     psoDesc.DepthStencilState.BackFace = defaultStencilOp;
 
-    // Input layout (none for procedural shaders)
-    psoDesc.InputLayout.pInputElementDescs = nullptr;
-    psoDesc.InputLayout.NumElements = 0;
+    // TODO: TEMP: Hardcoded input layout for position + color
+    D3D12_INPUT_ELEMENT_DESC inputElements[] = {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "COLOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+    };
+
+    psoDesc.InputLayout.pInputElementDescs = inputElements;
+    psoDesc.InputLayout.NumElements = _countof(inputElements);
 
     psoDesc.IBStripCutValue = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -237,12 +250,4 @@ bool Shader::CreatePipelineState(ID3D12Device* device, const ShaderDescription& 
     }
 
     return true;
-}
-
-void Shader::SetPipelineState(ID3D12GraphicsCommandList* cmdList) {
-    if (!cmdList) {
-        return;
-    }
-    cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
-    cmdList->SetPipelineState(m_pipelineState.Get());
 }

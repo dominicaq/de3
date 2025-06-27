@@ -7,6 +7,7 @@ DX12Device::~DX12Device() {
     m_device.Reset();
     m_adapter.Reset();
     m_factory.Reset();
+    m_allocator.Reset();
 
     if (m_debugController) {
         m_debugController.Reset();
@@ -61,7 +62,7 @@ bool DX12Device::Initialize(bool enableDebugController) {
     }
 
 #ifdef _DEBUG
-    // Configure debug info queue AFTER device creation
+    // Configure debug info queue after device creation
     if (m_debugEnabled && m_device) {
         if (SUCCEEDED(m_device->QueryInterface(IID_PPV_ARGS(&m_infoQueue)))) {
             // Set break on severe errors
@@ -75,6 +76,17 @@ bool DX12Device::Initialize(bool enableDebugController) {
         }
     }
 #endif
+
+    // Create D3D12MA allocator
+    D3D12MA::ALLOCATOR_DESC allocatorDesc = {};
+    allocatorDesc.pDevice = m_device.Get();
+    allocatorDesc.pAdapter = m_adapter.Get();
+
+    hr = D3D12MA::CreateAllocator(&allocatorDesc, &m_allocator);
+    if (FAILED(hr)) {
+        printf("Failed to create D3D12MA allocator: 0x%08X\n", hr);
+        return false;
+    }
 
     // Required features
     DX12Features requested;

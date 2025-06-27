@@ -6,8 +6,11 @@
 #include "dx12/core/CommandAllocator.h"
 #include "dx12/core/CommandList.h"
 #include "dx12/resources/FrameResources.h"
-#include "dx12/resources/Shader.h"
 #include "dx12/CommandQueueManager.h"
+
+// TEMP
+#include "dx12/resources/Shader.h"
+#include "dx12/resources/Buffer.h"
 
 class Renderer {
 public:
@@ -42,6 +45,8 @@ public:
     // TODO: TEMP
     std::unique_ptr<Shader> m_testShader;
     void TestShaderDraw(CommandList* cmdList);
+    std::unique_ptr<Buffer> m_triangleVertexBuffer;
+    std::unique_ptr<Buffer> m_triangleIndexBuffer;
 
 private:
     bool InitializeFrameResources();

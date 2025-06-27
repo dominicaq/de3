@@ -45,33 +45,56 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     }
 
     // TODO: TEMP
-    // Create test shader
+    float triangleVertices[] = {
+        // Position (3 floats)      Color (3 floats)
+         0.0f,  0.5f, 0.0f,        1.0f, 0.0f, 0.0f,  // Top vertex - Red
+         0.5f, -0.5f, 0.0f,        0.0f, 1.0f, 0.0f,  // Bottom right - Green
+        -0.5f, -0.5f, 0.0f,        0.0f, 0.0f, 1.0f   // Bottom left - Blue
+    };
+
+    uint32_t triangleIndices[] = { 0, 1, 2 };
+
+    // Create vertex buffer
+    m_triangleVertexBuffer = std::make_unique<Buffer>();
+    if (!m_triangleVertexBuffer->Initialize(m_device->GetAllocator(),
+                                           triangleVertices,
+                                           sizeof(triangleVertices),
+                                           6 * sizeof(float),  // stride: 3 pos + 3 color
+                                           true)) {            // dynamic for now
+        throw std::runtime_error("Failed to create triangle vertex buffer");
+    }
+
+    // Create index buffer
+    m_triangleIndexBuffer = std::make_unique<Buffer>();
+    if (!m_triangleIndexBuffer->Initialize(m_device->GetAllocator(),
+                                          triangleIndices,
+                                          sizeof(triangleIndices),
+                                          sizeof(uint32_t),
+                                          true)) {             // dynamic for now
+        throw std::runtime_error("Failed to create triangle index buffer");
+    }
+
+    printf("Triangle buffers created successfully\n");
+
+    // Create test shader - updated to use vertex buffer input
     ShaderDescription triangleShaderDesc;
     triangleShaderDesc.name = "BasicTriangle";
-    triangleShaderDesc.renderTargetFormat = m_swapChain->GetFormat(); // Use actual swap chain format
+    triangleShaderDesc.renderTargetFormat = m_swapChain->GetFormat();
     triangleShaderDesc.vertexShaderSource = R"(
+    struct VSInput {
+        float3 position : POSITION;
+        float3 color : COLOR;
+    };
+
     struct VSOutput {
         float4 position : SV_POSITION;
         float3 color : COLOR;
     };
 
-    VSOutput VSMain(uint vertexID : SV_VertexID) {
+    VSOutput VSMain(VSInput input) {
         VSOutput output;
-
-        // Counter-clockwise triangle (proper winding for back-face culling)
-        if (vertexID == 0) {
-            output.position = float4(0.0, 0.5, 0.0, 1.0);   // Top vertex
-            output.color = float3(1.0, 0.0, 0.0);           // Red
-        }
-        else if (vertexID == 1) {
-            output.position = float4(0.5, -0.5, 0.0, 1.0);  // Bottom right
-            output.color = float3(0.0, 1.0, 0.0);           // Green
-        }
-        else {
-            output.position = float4(-0.5, -0.5, 0.0, 1.0); // Bottom left
-            output.color = float3(0.0, 0.0, 1.0);           // Blue
-        }
-
+        output.position = float4(input.position, 1.0);
+        output.color = input.color;
         return output;
     }
     )";
@@ -409,8 +432,8 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
 }
 
 void Renderer::TestShaderDraw(CommandList* cmdList) {
-    if (!m_testShader || !cmdList) {
-        printf("TestShaderDraw: Invalid shader or command list\n");
+    if (!m_testShader || !cmdList || !m_triangleVertexBuffer || !m_triangleIndexBuffer) {
+        printf("TestShaderDraw: Invalid resources\n");
         return;
     }
 
@@ -423,9 +446,17 @@ void Renderer::TestShaderDraw(CommandList* cmdList) {
     // Set pipeline state and root signature
     m_testShader->SetPipelineState(d3dCmdList);
 
+    // Bind vertex buffer
+    auto vertexView = m_triangleVertexBuffer->GetVertexView();
+    d3dCmdList->IASetVertexBuffers(0, 1, &vertexView);
+
+    // Bind index buffer
+    auto indexView = m_triangleIndexBuffer->GetIndexView(true); // true = 32-bit indices
+    d3dCmdList->IASetIndexBuffer(&indexView);
+
     // Set primitive topology
     d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    // Draw the triangle
-    d3dCmdList->DrawInstanced(3, 1, 0, 0);
+    // Draw the triangle using indices
+    d3dCmdList->DrawIndexedInstanced(3, 1, 0, 0, 0); // 3 indices, 1 instance
 }
