@@ -4,10 +4,10 @@
 
 DX12Device::~DX12Device() {
     // Explicit cleanup in reverse order of creation
+    m_allocator.Reset();
     m_device.Reset();
     m_adapter.Reset();
     m_factory.Reset();
-    m_allocator.Reset();
 
     if (m_debugController) {
         m_debugController.Reset();
@@ -81,6 +81,7 @@ bool DX12Device::Initialize(bool enableDebugController) {
     D3D12MA::ALLOCATOR_DESC allocatorDesc = {};
     allocatorDesc.pDevice = m_device.Get();
     allocatorDesc.pAdapter = m_adapter.Get();
+    allocatorDesc.Flags = D3D12MA_RECOMMENDED_ALLOCATOR_FLAGS;
 
     hr = D3D12MA::CreateAllocator(&allocatorDesc, &m_allocator);
     if (FAILED(hr)) {

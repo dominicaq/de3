@@ -12,8 +12,8 @@ Buffer::~Buffer() {
     }
 }
 
-bool Buffer::Initialize(D3D12MA::Allocator* allocator, const void* data, UINT64 size, UINT stride, bool dynamic) {
-    if (!allocator || !data || size == 0 || stride == 0) {
+bool Buffer::Initialize(D3D12MA::Allocator* allocator, UINT64 size, UINT stride, bool dynamic) {
+    if (!allocator || size == 0 || stride == 0) {
         printf("Buffer::Initialize - Invalid parameters\n");
         return false;
     }
@@ -39,11 +39,13 @@ bool Buffer::Initialize(D3D12MA::Allocator* allocator, const void* data, UINT64 
     D3D12_RESOURCE_STATES initialState;
 
     if (dynamic) {
+        // Dynamic: CPU-writable, slower GPU access, stays mapped
         allocDesc.HeapType = D3D12_HEAP_TYPE_UPLOAD;
         initialState = D3D12_RESOURCE_STATE_GENERIC_READ;
     } else {
+        // Static: GPU-only, fast access, requires upload via command list
         allocDesc.HeapType = D3D12_HEAP_TYPE_DEFAULT;
-        initialState = D3D12_RESOURCE_STATE_COMMON; // Let caller transition as needed
+        initialState = D3D12_RESOURCE_STATE_COMMON;
     }
 
     // Create the buffer
@@ -67,22 +69,14 @@ bool Buffer::Initialize(D3D12MA::Allocator* allocator, const void* data, UINT64 
     m_allocation->SetName(name.c_str());
 #endif
 
-    // Handle data upload
     if (dynamic) {
-        // Map dynamic buffer and copy data
+        // Map dynamic buffer (ready for data)
         D3D12_RANGE readRange = { 0, 0 };
         hr = m_buffer->Map(0, &readRange, &m_mappedData);
         if (FAILED(hr)) {
             printf("Failed to map dynamic buffer: 0x%08X\n", hr);
             return false;
         }
-
-        memcpy(m_mappedData, data, size);
-        // Keep mapped for future updates
-
-    } else {
-        // For static buffers, we need upload via command list
-        printf("Static buffer created - upload via command list needed\n");
     }
 
     return true;

@@ -43,11 +43,13 @@ public:
     void DebugPrintValidationMessages() { m_device->PrintAndClearInfoQueue(); }
 
     // TODO: TEMP
+    bool UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataSize);
     std::unique_ptr<Shader> m_testShader;
     void TestShaderDraw(CommandList* cmdList);
     std::unique_ptr<Buffer> m_triangleVertexBuffer;
     std::unique_ptr<Buffer> m_triangleIndexBuffer;
-
+    std::unique_ptr<Buffer> m_uploadBuffer;
+    void TEMP_FUNC();
 private:
     bool InitializeFrameResources();
 

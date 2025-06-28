@@ -1,5 +1,92 @@
 #include "Renderer.h"
 
+void Renderer::TEMP_FUNC() {
+   // TODO: TEMP
+   float triangleVertices[] = {
+       // Position (3 floats)      Color (3 floats)
+        0.0f,  0.5f, 0.0f,        1.0f, 0.0f, 0.0f,  // Top vertex - Red
+        0.5f, -0.5f, 0.0f,        0.0f, 1.0f, 0.0f,  // Bottom right - Green
+       -0.5f, -0.5f, 0.0f,        0.0f, 0.0f, 1.0f   // Bottom left - Blue
+   };
+
+   uint32_t triangleIndices[] = { 0, 1, 2 };
+
+   // Create vertex buffer (static)
+   m_triangleVertexBuffer = std::make_unique<Buffer>();
+   if (!m_triangleVertexBuffer->Initialize(m_device->GetAllocator(), sizeof(triangleVertices), 6 * sizeof(float), true)) {  // static
+       throw std::runtime_error("Failed to create triangle vertex buffer");
+   }
+
+   // Create index buffer (dynamic)
+   m_triangleIndexBuffer = std::make_unique<Buffer>();
+   if (!m_triangleIndexBuffer->Initialize(m_device->GetAllocator(), sizeof(triangleIndices), sizeof(uint32_t), true)) {  // dynamic
+       throw std::runtime_error("Failed to create triangle index buffer");
+   }
+
+   // Update dynamic index buffer
+   if (!m_triangleIndexBuffer->Update(triangleIndices, sizeof(triangleIndices), 0)) {
+       throw std::runtime_error("Failed to update index buffer");
+   }
+
+   if (!m_triangleVertexBuffer->Update(triangleVertices, sizeof(triangleVertices), 0)) {
+       throw std::runtime_error("Failed to update index buffer");
+   }
+
+   // Create upload buffer
+   m_uploadBuffer = std::make_unique<Buffer>();
+   if (!m_uploadBuffer->Initialize(m_device->GetAllocator(), 1024*1024, 1, true)) {
+       throw std::runtime_error("Failed to create upload buffer");
+   }
+
+   // Upload vertex data (STATIC)
+//    if (!UploadStaticBuffer(m_triangleVertexBuffer.get(), triangleVertices, sizeof(triangleVertices))) {
+//        throw std::runtime_error("Failed to upload vertex data");
+//    }
+
+   printf("Triangle buffers created successfully\n");
+
+   // Create test shader
+   ShaderDescription triangleShaderDesc;
+   triangleShaderDesc.name = "BasicTriangle";
+   triangleShaderDesc.renderTargetFormat = m_swapChain->GetFormat();
+   triangleShaderDesc.vertexShaderSource = R"(
+   struct VSInput {
+       float3 position : POSITION;
+       float3 color : COLOR;
+   };
+
+   struct VSOutput {
+       float4 position : SV_POSITION;
+       float3 color : COLOR;
+   };
+
+   VSOutput VSMain(VSInput input) {
+       VSOutput output;
+       output.position = float4(input.position, 1.0);
+       output.color = input.color;
+       return output;
+   }
+   )";
+
+   triangleShaderDesc.pixelShaderSource = R"(
+   struct VSOutput {
+       float4 position : SV_POSITION;
+       float3 color : COLOR;
+   };
+
+   float4 PSMain(VSOutput input) : SV_TARGET {
+       return float4(input.color, 1.0);
+   }
+   )";
+
+   m_testShader = std::make_unique<Shader>();
+   bool success = m_testShader->Initialize(m_device->GetDevice(), triangleShaderDesc);
+   printf("Shader init result: %s\n", success ? "SUCCESS" : "FAILED");
+   if (!success) {
+       throw std::runtime_error("Failed to initialize test shader");
+   }
+}
+
 Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     m_device = std::make_unique<DX12Device>();
     if (!m_device->Initialize(config.enableDebugLayer)) {
@@ -44,78 +131,8 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
         throw std::runtime_error("Failed to create command list");
     }
 
-    // TODO: TEMP
-    float triangleVertices[] = {
-        // Position (3 floats)      Color (3 floats)
-         0.0f,  0.5f, 0.0f,        1.0f, 0.0f, 0.0f,  // Top vertex - Red
-         0.5f, -0.5f, 0.0f,        0.0f, 1.0f, 0.0f,  // Bottom right - Green
-        -0.5f, -0.5f, 0.0f,        0.0f, 0.0f, 1.0f   // Bottom left - Blue
-    };
-
-    uint32_t triangleIndices[] = { 0, 1, 2 };
-
-    // Create vertex buffer
-    m_triangleVertexBuffer = std::make_unique<Buffer>();
-    if (!m_triangleVertexBuffer->Initialize(m_device->GetAllocator(),
-                                           triangleVertices,
-                                           sizeof(triangleVertices),
-                                           6 * sizeof(float),  // stride: 3 pos + 3 color
-                                           true)) {            // dynamic for now
-        throw std::runtime_error("Failed to create triangle vertex buffer");
-    }
-
-    // Create index buffer
-    m_triangleIndexBuffer = std::make_unique<Buffer>();
-    if (!m_triangleIndexBuffer->Initialize(m_device->GetAllocator(),
-                                          triangleIndices,
-                                          sizeof(triangleIndices),
-                                          sizeof(uint32_t),
-                                          true)) {             // dynamic for now
-        throw std::runtime_error("Failed to create triangle index buffer");
-    }
-
-    printf("Triangle buffers created successfully\n");
-
-    // Create test shader - updated to use vertex buffer input
-    ShaderDescription triangleShaderDesc;
-    triangleShaderDesc.name = "BasicTriangle";
-    triangleShaderDesc.renderTargetFormat = m_swapChain->GetFormat();
-    triangleShaderDesc.vertexShaderSource = R"(
-    struct VSInput {
-        float3 position : POSITION;
-        float3 color : COLOR;
-    };
-
-    struct VSOutput {
-        float4 position : SV_POSITION;
-        float3 color : COLOR;
-    };
-
-    VSOutput VSMain(VSInput input) {
-        VSOutput output;
-        output.position = float4(input.position, 1.0);
-        output.color = input.color;
-        return output;
-    }
-    )";
-
-    triangleShaderDesc.pixelShaderSource = R"(
-    struct VSOutput {
-        float4 position : SV_POSITION;
-        float3 color : COLOR;
-    };
-
-    float4 PSMain(VSOutput input) : SV_TARGET {
-        return float4(input.color, 1.0);
-    }
-    )";
-
-    m_testShader = std::make_unique<Shader>();
-    bool success = m_testShader->Initialize(m_device->GetDevice(), triangleShaderDesc);
-    printf("Shader init result: %s\n", success ? "SUCCESS" : "FAILED");
-    if (!success) {
-        throw std::runtime_error("Failed to initialize test shader");
-    }
+    // TODO: remove
+    TEMP_FUNC();
 }
 
 Renderer::~Renderer() {
@@ -429,6 +446,48 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
             printf("Failed to reinitialize frame resources after reconfigure\n");
         }
     }
+}
+
+bool Renderer::UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataSize) {
+    if (dataSize > m_uploadBuffer->GetSize()) {
+        printf("UploadStaticBuffer: Data too large for upload buffer\n");
+        return false;
+    }
+
+    // Put data into the upload buffer
+    if (!m_uploadBuffer->Update(data, dataSize, 0)) {
+        return false;
+    }
+
+    ID3D12GraphicsCommandList* cmdList = m_commandList->GetCommandList();
+
+    // Transition static buffer to copy destination
+    D3D12_RESOURCE_BARRIER barrier = {};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    barrier.Transition.pResource = buffer->GetResource();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Copy from upload buffer to static buffer
+    cmdList->CopyBufferRegion(
+        buffer->GetResource(),           // Destination
+        0,                              // Dest offset
+        m_uploadBuffer->GetResource(),   // Source (reusable upload buffer)
+        0,                              // Source offset
+        dataSize                        // Size
+    );
+
+    // Transition to vertex buffer state
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+
+    cmdList->ResourceBarrier(1, &barrier);
+
+    return true;
 }
 
 void Renderer::TestShaderDraw(CommandList* cmdList) {
