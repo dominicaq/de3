@@ -29,6 +29,8 @@ public:
     GeometryManager(D3D12MA::Allocator* allocator);
 
     void BindBuffers(CommandList* cmdList);
+    bool UploadToStaticBuffer(Buffer* destBuffer, const void* data, size_t dataSize, size_t destOffset, CommandList* cmdList);
+
     GeometryHandle GenerateHandle();
     GeometryHandle RegisterGeometry(const GeometryData& data);
     const GeometryDescription& GetGeometryDesc(GeometryHandle handle) const;

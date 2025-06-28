@@ -3,8 +3,7 @@
 GeometryManager::GeometryManager(D3D12MA::Allocator* allocator) : m_allocator(allocator) {
     // Create vertex buffer (static)
     m_vertexBuffer = std::make_unique<Buffer>();
-    uint32_t vertexStructSize = sizeof(VertexAttributes) * sizeof(float);
-    if (!m_vertexBuffer->Initialize(m_allocator, m_VERTEX_BUFFER_SIZE, vertexStructSize, true)) {
+    if (!m_vertexBuffer->Initialize(m_allocator, m_VERTEX_BUFFER_SIZE, sizeof(VertexAttributes), true)) {
         throw std::runtime_error("Failed to create triangle vertex buffer");
     }
 
@@ -141,7 +140,7 @@ uint32_t GeometryManager::FindIndexSpace(uint32_t indexCount) {
 
 bool GeometryManager::UploadVertexData(const void* data, size_t dataSize, size_t destOffset) {
     // Copy to upload buffer
-    if (!m_uploadBuffer->Update(data, dataSize, 0)) {
+    if (!m_vertexBuffer->Update(data, dataSize, 0)) {
         return false;
     }
 
@@ -154,7 +153,7 @@ bool GeometryManager::UploadVertexData(const void* data, size_t dataSize, size_t
 
 bool GeometryManager::UploadIndexData(const void* data, size_t dataSize, size_t destOffset) {
     // Copy to upload buffer
-    if (!m_uploadBuffer->Update(data, dataSize, 0)) {
+    if (!m_indexBuffer->Update(data, dataSize, 0)) {
         return false;
     }
 
@@ -178,3 +177,69 @@ const GeometryDescription& GeometryManager::GetGeometryDesc(GeometryHandle handl
     invalidDesc.handle = INVALID_GEOMETRY_HANDLE;
     return invalidDesc;
 }
+
+// bool Renderer::UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataSize) {
+//     if (dataSize > m_uploadBuffer->GetSize()) {
+//         printf("UploadStaticBuffer: Data too large for upload buffer\n");
+//         return false;
+//     }
+
+//     // Put data into the upload buffer
+//     if (!m_uploadBuffer->Update(data, dataSize, 0)) {
+//         return false;
+//     }
+
+//     ID3D12GraphicsCommandList* cmdList = m_commandList->GetCommandList();
+
+//     // Transition static buffer to copy destination
+//     D3D12_RESOURCE_BARRIER barrier = {};
+//     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+//     barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+//     barrier.Transition.pResource = buffer->GetResource();
+//     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+//     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
+//     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+
+//     cmdList->ResourceBarrier(1, &barrier);
+
+//     // Copy from upload buffer to static buffer
+//     cmdList->CopyBufferRegion(
+//         buffer->GetResource(),           // Destination
+//         0,                              // Dest offset
+//         m_uploadBuffer->GetResource(),   // Source
+//         0,                              // Source offset
+//         dataSize                        // Size
+//     );
+
+//     // Transition to vertex buffer state
+//     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+//     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+//     cmdList->ResourceBarrier(1, &barrier);
+
+//     // Close the command list
+//     if (!m_commandList->Close()) {
+//         printf("Failed to close command list for upload\n");
+//         return false;
+//     }
+
+//     // Execute immediately
+//     ID3D12CommandList* commandLists[] = { cmdList };
+//     m_commandManager->GetGraphicsQueue()->ExecuteCommandLists(1, commandLists);
+
+//     // Wait for completion using existing fence
+//     UINT64 uploadFenceValue = 999999;
+//     HRESULT hr = m_commandManager->GetGraphicsQueue()->GetCommandQueue()->Signal(
+//         m_frameResources[0].frameFence.Get(), uploadFenceValue);
+
+//     if (FAILED(hr)) {
+//         printf("Failed to signal fence for upload: 0x%08X\n", hr);
+//         return false;
+//     }
+
+//     // Wait for upload to complete
+//     while (m_frameResources[0].frameFence->GetCompletedValue() < uploadFenceValue) {
+//         Sleep(1);
+//     }
+
+//     return true;
+// }

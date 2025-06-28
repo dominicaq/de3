@@ -15,7 +15,7 @@ void Renderer::TEMP_FUNC() {
     GeometryData geoData;
     geoData.vertexData = triangleVertices;
     geoData.vertexCount = 3;
-    geoData.vertexStride = sizeof(float);
+    geoData.vertexStride = 6 * sizeof(float);
     geoData.indexData = triangleIndices;
     geoData.indexCount = 3;
     geoData.name = "Triangle";
