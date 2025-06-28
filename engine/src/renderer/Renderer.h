@@ -10,7 +10,7 @@
 
 // TEMP
 #include "dx12/resources/Shader.h"
-#include "dx12/resources/Buffer.h"
+#include "../resources/GeometryManager.h"
 
 class Renderer {
 public:
@@ -43,13 +43,13 @@ public:
     void DebugPrintValidationMessages() { m_device->PrintAndClearInfoQueue(); }
 
     // TODO: TEMP
-    bool UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataSize);
+    std::unique_ptr<GeometryManager> m_geometryManager;
+    GeometryHandle m_triangleGeometry = INVALID_GEOMETRY_HANDLE;
     std::unique_ptr<Shader> m_testShader;
     void TestShaderDraw(CommandList* cmdList);
-    std::unique_ptr<Buffer> m_triangleVertexBuffer;
-    std::unique_ptr<Buffer> m_triangleIndexBuffer;
-    std::unique_ptr<Buffer> m_uploadBuffer;
     void TEMP_FUNC();
+    // END OF TEMP
+
 private:
     bool InitializeFrameResources();
 

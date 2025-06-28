@@ -11,35 +11,19 @@ void Renderer::TEMP_FUNC() {
 
    uint32_t triangleIndices[] = { 0, 1, 2 };
 
-   // Create vertex buffer (static)
-   m_triangleVertexBuffer = std::make_unique<Buffer>();
-   if (!m_triangleVertexBuffer->Initialize(m_device->GetAllocator(), sizeof(triangleVertices), 6 * sizeof(float), false)) {  // static
-       throw std::runtime_error("Failed to create triangle vertex buffer");
-   }
+    // Register geometry with GeometryManager
+    GeometryData geoData;
+    geoData.vertexData = triangleVertices;
+    geoData.vertexCount = 3;
+    geoData.vertexStride = sizeof(float);
+    geoData.indexData = triangleIndices;
+    geoData.indexCount = 3;
+    geoData.name = "Triangle";
 
-   // Create index buffer (dynamic)
-   m_triangleIndexBuffer = std::make_unique<Buffer>();
-   if (!m_triangleIndexBuffer->Initialize(m_device->GetAllocator(), sizeof(triangleIndices), sizeof(uint32_t), true)) {  // dynamic
-       throw std::runtime_error("Failed to create triangle index buffer");
-   }
-
-   // Update dynamic index buffer
-   if (!m_triangleIndexBuffer->Update(triangleIndices, sizeof(triangleIndices), 0)) {
-       throw std::runtime_error("Failed to update index buffer");
-   }
-
-   // Create upload buffer
-   m_uploadBuffer = std::make_unique<Buffer>();
-   if (!m_uploadBuffer->Initialize(m_device->GetAllocator(), 1024*1024, 1, true)) {
-       throw std::runtime_error("Failed to create upload buffer");
-   }
-
-   // Upload vertex data (STATIC)
-   if (!UploadStaticBuffer(m_triangleVertexBuffer.get(), triangleVertices, sizeof(triangleVertices))) {
-       throw std::runtime_error("Failed to upload vertex data");
-   }
-
-   printf("Triangle buffers created successfully\n");
+    m_triangleGeometry = m_geometryManager->RegisterGeometry(geoData);
+    if (m_triangleGeometry == INVALID_GEOMETRY_HANDLE) {
+        throw std::runtime_error("Failed to register triangle geometry");
+    }
 
    // Create test shader
    ShaderDescription triangleShaderDesc;
@@ -128,6 +112,7 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     }
 
     // TODO: remove
+    m_geometryManager = std::make_unique<GeometryManager>(m_device->GetAllocator());
     TEMP_FUNC();
 }
 
@@ -444,85 +429,8 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
     }
 }
 
-bool Renderer::UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataSize) {
-    if (dataSize > m_uploadBuffer->GetSize()) {
-        printf("UploadStaticBuffer: Data too large for upload buffer\n");
-        return false;
-    }
-
-    // Put data into the upload buffer
-    if (!m_uploadBuffer->Update(data, dataSize, 0)) {
-        return false;
-    }
-
-    // Reset the command list to ensure it's ready for recording
-    if (!m_frameResources[0].commandAllocator->Reset()) {
-        printf("Failed to reset command allocator for upload\n");
-        return false;
-    }
-
-    if (!m_commandList->Reset(m_frameResources[0].commandAllocator.get())) {
-        printf("Failed to reset command list for upload\n");
-        return false;
-    }
-
-    ID3D12GraphicsCommandList* cmdList = m_commandList->GetCommandList();
-
-    // Transition static buffer to copy destination
-    D3D12_RESOURCE_BARRIER barrier = {};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    barrier.Transition.pResource = buffer->GetResource();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-
-    cmdList->ResourceBarrier(1, &barrier);
-
-    // Copy from upload buffer to static buffer
-    cmdList->CopyBufferRegion(
-        buffer->GetResource(),           // Destination
-        0,                              // Dest offset
-        m_uploadBuffer->GetResource(),   // Source
-        0,                              // Source offset
-        dataSize                        // Size
-    );
-
-    // Transition to vertex buffer state
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-    cmdList->ResourceBarrier(1, &barrier);
-
-    // Close the command list
-    if (!m_commandList->Close()) {
-        printf("Failed to close command list for upload\n");
-        return false;
-    }
-
-    // Execute immediately
-    ID3D12CommandList* commandLists[] = { cmdList };
-    m_commandManager->GetGraphicsQueue()->ExecuteCommandLists(1, commandLists);
-
-    // Wait for completion using existing fence
-    UINT64 uploadFenceValue = 999999;
-    HRESULT hr = m_commandManager->GetGraphicsQueue()->GetCommandQueue()->Signal(
-        m_frameResources[0].frameFence.Get(), uploadFenceValue);
-
-    if (FAILED(hr)) {
-        printf("Failed to signal fence for upload: 0x%08X\n", hr);
-        return false;
-    }
-
-    // Wait for upload to complete
-    while (m_frameResources[0].frameFence->GetCompletedValue() < uploadFenceValue) {
-        Sleep(1);
-    }
-
-    return true;
-}
-
 void Renderer::TestShaderDraw(CommandList* cmdList) {
-    if (!m_testShader || !cmdList || !m_triangleVertexBuffer || !m_triangleIndexBuffer) {
+    if (!m_testShader || !cmdList || m_triangleGeometry == INVALID_GEOMETRY_HANDLE) {
         printf("TestShaderDraw: Invalid resources\n");
         return;
     }
@@ -536,17 +444,21 @@ void Renderer::TestShaderDraw(CommandList* cmdList) {
     // Set pipeline state and root signature
     m_testShader->SetPipelineState(d3dCmdList);
 
-    // Bind vertex buffer
-    auto vertexView = m_triangleVertexBuffer->GetVertexView();
-    d3dCmdList->IASetVertexBuffers(0, 1, &vertexView);
+    // Get geometry description
+    const GeometryDescription& geoDesc = m_geometryManager->GetGeometryDesc(m_triangleGeometry);
 
-    // Bind index buffer
-    auto indexView = m_triangleIndexBuffer->GetIndexView(true); // true = 32-bit indices
-    d3dCmdList->IASetIndexBuffer(&indexView);
+    // Bind geometry manager's buffers
+    m_geometryManager->BindBuffers(cmdList);
 
     // Set primitive topology
     d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    // Draw the triangle using indices
-    d3dCmdList->DrawIndexedInstanced(3, 1, 0, 0, 0); // 3 indices, 1 instance
+    // Draw using offsets into shared buffers
+    d3dCmdList->DrawIndexedInstanced(
+        geoDesc.indexCount,     // 3 indices
+        1,                      // 1 instance
+        geoDesc.indexOffset,    // Start index
+        geoDesc.vertexOffset,   // Base vertex
+        0                       // Start instance
+    );
 }
