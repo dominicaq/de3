@@ -13,7 +13,7 @@ void Renderer::TEMP_FUNC() {
 
    // Create vertex buffer (static)
    m_triangleVertexBuffer = std::make_unique<Buffer>();
-   if (!m_triangleVertexBuffer->Initialize(m_device->GetAllocator(), sizeof(triangleVertices), 6 * sizeof(float), true)) {  // static
+   if (!m_triangleVertexBuffer->Initialize(m_device->GetAllocator(), sizeof(triangleVertices), 6 * sizeof(float), false)) {  // static
        throw std::runtime_error("Failed to create triangle vertex buffer");
    }
 
@@ -28,10 +28,6 @@ void Renderer::TEMP_FUNC() {
        throw std::runtime_error("Failed to update index buffer");
    }
 
-   if (!m_triangleVertexBuffer->Update(triangleVertices, sizeof(triangleVertices), 0)) {
-       throw std::runtime_error("Failed to update index buffer");
-   }
-
    // Create upload buffer
    m_uploadBuffer = std::make_unique<Buffer>();
    if (!m_uploadBuffer->Initialize(m_device->GetAllocator(), 1024*1024, 1, true)) {
@@ -39,9 +35,9 @@ void Renderer::TEMP_FUNC() {
    }
 
    // Upload vertex data (STATIC)
-//    if (!UploadStaticBuffer(m_triangleVertexBuffer.get(), triangleVertices, sizeof(triangleVertices))) {
-//        throw std::runtime_error("Failed to upload vertex data");
-//    }
+   if (!UploadStaticBuffer(m_triangleVertexBuffer.get(), triangleVertices, sizeof(triangleVertices))) {
+       throw std::runtime_error("Failed to upload vertex data");
+   }
 
    printf("Triangle buffers created successfully\n");
 
@@ -459,6 +455,17 @@ bool Renderer::UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataS
         return false;
     }
 
+    // Reset the command list to ensure it's ready for recording
+    if (!m_frameResources[0].commandAllocator->Reset()) {
+        printf("Failed to reset command allocator for upload\n");
+        return false;
+    }
+
+    if (!m_commandList->Reset(m_frameResources[0].commandAllocator.get())) {
+        printf("Failed to reset command list for upload\n");
+        return false;
+    }
+
     ID3D12GraphicsCommandList* cmdList = m_commandList->GetCommandList();
 
     // Transition static buffer to copy destination
@@ -476,7 +483,7 @@ bool Renderer::UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataS
     cmdList->CopyBufferRegion(
         buffer->GetResource(),           // Destination
         0,                              // Dest offset
-        m_uploadBuffer->GetResource(),   // Source (reusable upload buffer)
+        m_uploadBuffer->GetResource(),   // Source
         0,                              // Source offset
         dataSize                        // Size
     );
@@ -484,8 +491,32 @@ bool Renderer::UploadStaticBuffer(Buffer* buffer, const void* data, size_t dataS
     // Transition to vertex buffer state
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
-
     cmdList->ResourceBarrier(1, &barrier);
+
+    // Close the command list
+    if (!m_commandList->Close()) {
+        printf("Failed to close command list for upload\n");
+        return false;
+    }
+
+    // Execute immediately
+    ID3D12CommandList* commandLists[] = { cmdList };
+    m_commandManager->GetGraphicsQueue()->ExecuteCommandLists(1, commandLists);
+
+    // Wait for completion using existing fence
+    UINT64 uploadFenceValue = 999999;
+    HRESULT hr = m_commandManager->GetGraphicsQueue()->GetCommandQueue()->Signal(
+        m_frameResources[0].frameFence.Get(), uploadFenceValue);
+
+    if (FAILED(hr)) {
+        printf("Failed to signal fence for upload: 0x%08X\n", hr);
+        return false;
+    }
+
+    // Wait for upload to complete
+    while (m_frameResources[0].frameFence->GetCompletedValue() < uploadFenceValue) {
+        Sleep(1);
+    }
 
     return true;
 }
