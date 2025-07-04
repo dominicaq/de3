@@ -17,13 +17,12 @@ int main() {
 
     std::unique_ptr<Renderer> renderer;
     try {
-        // Initialize DirectX 12 - only catch renderer setup errors
+        // Initialize DirectX 12
         renderer = std::make_unique<Renderer>(window.GetHandle(), g_config);
     }
     catch (const std::runtime_error& e) {
-        std::cerr << "Renderer Setup Error: " << e.what() << std::endl;
-        MessageBoxA(window.GetHandle(), e.what(), "Graphics Error", MB_OK | MB_ICONERROR);
-        window.Destroy();
+        std::cerr << "Graphics initialization failed: " << e.what() << std::endl;
+        MessageBoxA(window.GetHandle(), e.what(), "DirectX 12 Error", MB_OK | MB_ICONERROR);
         return -1;
     }
 
@@ -58,7 +57,12 @@ int main() {
         renderer->ClearBackBuffer(cmdList, clearColor);
 
         // Draw test triangle
-        renderer->TestShaderDraw(cmdList);
+        renderer->TestMeshDraw(cmdList);
+
+        static uint32_t frameCount = 0;
+        if (++frameCount % 180 * 9 == 0) {  // Every 9 seconds
+            renderer->GetGeometryManager()->PrintDebugInfo();
+        }
 
         // Finish frame and present
         renderer->EndFrame(g_config);
