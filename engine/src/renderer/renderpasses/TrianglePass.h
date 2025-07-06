@@ -2,7 +2,7 @@
 
 class TriangleClass : public RenderPass {
 public:
-    virtual ~TriangleClass() = default;
+    ~TriangleClass() = default;
 
     virtual bool Initialize(ID3D12Device* device) override {
         CompileShaders();

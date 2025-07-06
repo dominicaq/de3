@@ -7,10 +7,6 @@
 #include "dx12/core/CommandList.h"
 #include "dx12/resources/FrameResources.h"
 #include "dx12/CommandQueueManager.h"
-// Geometry System
-#include "../resources/GeometryManager.h"
-// TEMP
-#include "renderpasses/TrianglePass.h"
 
 class Renderer {
 public:
@@ -41,31 +37,26 @@ public:
     DXGI_FORMAT GetBackBufferFormat() const;
 
     // Geometry Management
-    GeometryManager* GetGeometryManager() const { return m_geometryManager.get(); }
+    DX12Device* GetDevice() { return m_device.get(); }
 
     // Draw Call
-    void DrawMesh(CommandList* cmdList, MeshHandle meshHandle);
+    // void DrawMesh(CommandList* cmdList, MeshHandle meshHandle);
 
     // Debug/Development
     void DebugPrintValidationMessages() { m_device->PrintAndClearInfoQueue(); }
 
     // TODO: Testing/Development
     void TestMeshDraw(CommandList* cmdList);
-    std::unique_ptr<TriangleClass> m_trianglePass;
 
 private:
     // Initialization
     bool InitializeFrameResources();
-    void CreateTestMeshes();
+    // void CreateTestMeshes();
 
     // Core DX12 Context
     std::unique_ptr<DX12Device> m_device;
     std::unique_ptr<CommandQueueManager> m_commandManager;
     std::unique_ptr<SwapChain> m_swapChain;
-
-    // Geometry System
-    std::unique_ptr<GeometryManager> m_geometryManager;
-    MeshHandle m_triangleMesh = INVALID_MESH_HANDLE;
 
     // RTV Management
     bool CreateBackBufferRTVs();

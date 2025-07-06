@@ -45,34 +45,11 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
                                    D3D12_COMMAND_LIST_TYPE_DIRECT)) {
         throw std::runtime_error("Failed to create command list");
     }
-
-    // Create geometry manager
-    m_geometryManager = std::make_unique<GeometryManager>(m_device->GetAllocator());
-
-    // Optional: Configure geometry manager
-    GeometryManager::Config geoConfig;
-    geoConfig.vertexBufferSize = 128 * 1024 * 1024;  // 128MB - adjust as needed
-    geoConfig.indexBufferSize = 32 * 1024 * 1024;    // 32MB
-    geoConfig.uploadHeapSize = 8 * 1024 * 1024;      // 8MB
-    geoConfig.maxUploadsPerFrame = 8;
-    m_geometryManager->SetConfig(geoConfig);
-
-    // Create test content
-    CreateTestMeshes();
-    m_trianglePass = std::make_unique<TriangleClass>();
-    if (!m_trianglePass->Initialize(m_device->GetDevice())) {
-        throw std::runtime_error("Failed to initialize triangle render pass");
-    }
 }
 
 Renderer::~Renderer() {
     if (m_device && m_commandManager) {
         WaitForFrame(m_currentFrameIndex);
-    }
-
-    // Clean up meshes
-    if (m_geometryManager && m_triangleMesh != INVALID_MESH_HANDLE) {
-        m_geometryManager->DestroyMesh(m_triangleMesh);
     }
 
     ReleaseBackBufferRTVs();
@@ -113,32 +90,6 @@ bool Renderer::InitializeFrameResources() {
     }
 
     return true;
-}
-
-void Renderer::CreateTestMeshes() {
-    // Create triangle vertices
-    VertexAttributes triangleVertices[] = {
-        { {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f} },    // Top - Red
-        { {1.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f} },   // Bottom right - Green
-        { {-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f} }   // Bottom left - Blue
-    };
-
-    uint32_t triangleIndices[] = { 0, 1, 2 };
-
-    // Create mesh using simple interface
-    MeshDescription triangleDesc = {};
-    triangleDesc.name = "Triangle";
-    triangleDesc.vertices = triangleVertices;
-    triangleDesc.indices = triangleIndices;
-    triangleDesc.vertexCount = 3;
-    triangleDesc.indexCount = 3;
-
-    m_triangleMesh = m_geometryManager->CreateMesh(triangleDesc);
-    if (m_triangleMesh == INVALID_MESH_HANDLE) {
-        throw std::runtime_error("Failed to create triangle mesh");
-    }
-
-    printf("Created triangle mesh with handle %u\n", m_triangleMesh);
 }
 
 // =============================================================================
@@ -199,10 +150,6 @@ CommandList* Renderer::BeginFrame() {
         printf("Failed to reset command list for frame %u\n", m_currentFrameIndex);
         return nullptr;
     }
-
-    // Handle geometry uploads automatically - this replaces the manual upload code
-    static uint32_t frameCounter = 0;
-    m_geometryManager->BeginFrame(frameCounter++, m_commandList.get());
 
     // Transition back buffer to render target
     m_commandList->TransitionBarrier(
@@ -353,63 +300,6 @@ void Renderer::ClearBackBuffer(CommandList* cmdList, const float clearColor[4]) 
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtv = GetCurrentBackBufferRTV();
     cmdList->GetCommandList()->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
-}
-
-void Renderer::TestMeshDraw(CommandList* cmdList) {
-    if (!cmdList) {
-        printf("TestMeshDraw: Invalid resources\n");
-        return;
-    }
-
-    ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
-    if (!d3dCmdList) {
-        printf("TestMeshDraw: Failed to get D3D12 command list\n");
-        return;
-    }
-
-    // Set pipeline state and root signature from triangle pass
-    d3dCmdList->SetGraphicsRootSignature(m_trianglePass->GetRootSignature());
-    d3dCmdList->SetPipelineState(m_trianglePass->GetPipelineState());
-
-    // Bind geometry buffers once
-    m_geometryManager->BindVertexIndexBuffers(cmdList);
-
-    // Set primitive topology
-    d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    // Draw triangle if ready
-    if (m_geometryManager->IsMeshReady(m_triangleMesh)) {
-        const MeshRenderData* renderData = m_geometryManager->GetMeshRenderData(m_triangleMesh);
-        if (renderData) {
-            d3dCmdList->DrawIndexedInstanced(
-                renderData->indexCount,     // IndexCountPerInstance
-                1,                          // InstanceCount
-                renderData->indexOffset,    // StartIndexLocation
-                renderData->vertexOffset,   // BaseVertexLocation
-                0                           // StartInstanceLocation
-            );
-        }
-    } else {
-        static bool hasWarned = false;
-        if (!hasWarned) {
-            printf("Triangle mesh not ready yet (uploading...)\n");
-            hasWarned = true;
-        }
-    }
-}
-
-void Renderer::DrawMesh(CommandList* cmdList, MeshHandle meshHandle) {
-   ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
-   const MeshRenderData* renderData = m_geometryManager->GetMeshRenderData(meshHandle);
-   if (renderData) {
-       d3dCmdList->DrawIndexedInstanced(
-           renderData->indexCount,     // IndexCountPerInstance
-           1,                          // InstanceCount
-           renderData->indexOffset,    // StartIndexLocation
-           renderData->vertexOffset,   // BaseVertexLocation
-           0                           // StartInstanceLocation
-       );
-   }
 }
 
 // =============================================================================

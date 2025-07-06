@@ -8,13 +8,14 @@
 
 #include <entt/entt.hpp>
 
+// Geometry System
+#include "resources/GeometryManager.h"
+// TEMP
+#include "renderer/renderpasses/TrianglePass.h"
+
 static EngineConfig g_config;
 
 int main() {
-    // TEMP CODE
-    entt::registry registry;
-    auto entity = registry.create();
-    // END OF TEMP
     Window window;
     if (!window.Create(g_config)) {
         std::cerr << "Failed to create window!" << std::endl;
@@ -41,12 +42,65 @@ int main() {
 
     PrintConfigStats(g_config);
 
+    // TEMP CODE
+    entt::registry registry;
+    RenderContext ctx {0.0f, registry};
+
+    // Triangle
+    auto entity = registry.create();
+
+    // Geometry System
+    DX12Device* device = renderer->GetDevice();
+    std::unique_ptr<GeometryManager> geometryManager = std::make_unique<GeometryManager>(device->GetAllocator());
+
+    // Optional: Configure geometry manager
+    GeometryManager::Config geoConfig;
+    geoConfig.vertexBufferSize = 128 * 1024 * 1024;  // 128MB - adjust as needed
+    geoConfig.indexBufferSize = 32 * 1024 * 1024;    // 32MB
+    geoConfig.uploadHeapSize = 8 * 1024 * 1024;      // 8MB
+    geoConfig.maxUploadsPerFrame = 8;
+    geometryManager->SetConfig(geoConfig);
+
+    std::unique_ptr<TriangleClass> trianglepass = std::make_unique<TriangleClass>();
+    if (!trianglepass->Initialize(device->GetDevice())) {
+        throw std::runtime_error("Failed to initialize triangle render pass");
+    }
+
+    MeshHandle triangleMesh = INVALID_MESH_HANDLE;
+    // Create triangle vertices
+    VertexAttributes triangleVertices[] = {
+        { {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f} },    // Top - Red
+        { {1.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f} },   // Bottom right - Green
+        { {-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f} }   // Bottom left - Blue
+    };
+    uint32_t triangleIndices[] = { 0, 1, 2 };
+
+    // Create mesh using simple interface
+    MeshDescription triangleDesc = {};
+    triangleDesc.name = "Triangle";
+    triangleDesc.vertices = triangleVertices;
+    triangleDesc.indices = triangleIndices;
+    triangleDesc.vertexCount = 3;
+    triangleDesc.indexCount = 3;
+
+    triangleMesh = geometryManager->CreateMesh(triangleDesc);
+    if (triangleMesh == INVALID_MESH_HANDLE) {
+        throw std::runtime_error("Failed to create triangle mesh");
+    }
+
+    printf("Created triangle mesh with handle %u\n", triangleMesh);
+    // END OF TEMP
+
     // Game loop
     int frameCount = 0;
     while (!window.ShouldClose()) {
         window.ProcessEvents();
         // Begin frame and get command list
         CommandList* cmdList = renderer->BeginFrame();
+        // Handle geometry uploads automatically
+        static uint32_t frameCounter = 0;
+        geometryManager->BeginFrame(frameCounter++, cmdList);
+
         renderer->SetupRenderTarget(cmdList);
         renderer->SetupViewportAndScissor(cmdList);
 
@@ -63,8 +117,30 @@ int main() {
         renderer->ClearBackBuffer(cmdList, clearColor);
 
         // Draw test triangle
-        renderer->TestMeshDraw(cmdList);
+        ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
+        if (!d3dCmdList) {
+            printf("TestMeshDraw: Failed to get D3D12 command list\n");
+            return -1;
+        }
 
+        // Set pipeline state and root signature from triangle pass
+        d3dCmdList->SetGraphicsRootSignature(trianglepass->GetRootSignature());
+        d3dCmdList->SetPipelineState(trianglepass->GetPipelineState());
+        d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        // renderer->TestMeshDraw(cmdList);
+        // Bind geometry buffers once
+        geometryManager->BindVertexIndexBuffers(cmdList);
+        const MeshRenderData* renderData = geometryManager->GetMeshRenderData(triangleMesh);
+        if (renderData) {
+            d3dCmdList->DrawIndexedInstanced(
+                renderData->indexCount,     // IndexCountPerInstance
+                1,                          // InstanceCount
+                renderData->indexOffset,    // StartIndexLocation
+                renderData->vertexOffset,   // BaseVertexLocation
+                0                           // StartInstanceLocation
+            );
+        }
         // static uint32_t frameCount = 0;
         // if (++frameCount % 180 * 9 == 0) {  // Every 9 seconds
         //     renderer->GetGeometryManager()->PrintDebugInfo();

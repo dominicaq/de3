@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dx12/core/DX12Common.h"
+#include <entt/entt.hpp>
 
 struct RenderContext {
     float deltaTime;
@@ -11,7 +12,7 @@ struct RenderContext {
     // projection
     // viewProjection Matrix
 
-    // entt::registry
+    entt::registry& registry;
 };
 
 struct ShaderDescription {
