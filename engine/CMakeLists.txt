@@ -40,6 +40,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     src
     interface
     "../external/D3D12MemoryAllocator/include"
+    "../external/entt-3.15.0/single_include"
 )
 
 # Link libraries

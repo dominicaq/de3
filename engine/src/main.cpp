@@ -6,9 +6,15 @@
 #include "renderer/Renderer.h"
 #include "renderer/FPSUtils.h"
 
+#include <entt/entt.hpp>
+
 static EngineConfig g_config;
 
 int main() {
+    // TEMP CODE
+    entt::registry registry;
+    auto entity = registry.create();
+    // END OF TEMP
     Window window;
     if (!window.Create(g_config)) {
         std::cerr << "Failed to create window!" << std::endl;
