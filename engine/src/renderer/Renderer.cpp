@@ -59,6 +59,10 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
 
     // Create test content
     CreateTestMeshes();
+    m_trianglePass = std::make_unique<TriangleClass>();
+    if (!m_trianglePass->Initialize(m_device->GetDevice())) {
+        throw std::runtime_error("Failed to initialize triangle render pass");
+    }
 }
 
 Renderer::~Renderer() {
@@ -135,47 +139,6 @@ void Renderer::CreateTestMeshes() {
     }
 
     printf("Created triangle mesh with handle %u\n", m_triangleMesh);
-
-    // Create test shader
-    ShaderDescription triangleShaderDesc;
-    triangleShaderDesc.name = "BasicTriangle";
-    triangleShaderDesc.renderTargetFormat = m_swapChain->GetFormat();
-    triangleShaderDesc.vertexShaderSource = R"(
-    struct VSInput {
-        float3 position : POSITION;
-        float3 color : COLOR;
-    };
-
-    struct VSOutput {
-        float4 position : SV_POSITION;
-        float3 color : COLOR;
-    };
-
-    VSOutput VSMain(VSInput input) {
-        VSOutput output;
-        output.position = float4(input.position, 1.0);
-        output.color = input.color;
-        return output;
-    }
-    )";
-
-    triangleShaderDesc.pixelShaderSource = R"(
-    struct VSOutput {
-        float4 position : SV_POSITION;
-        float3 color : COLOR;
-    };
-
-    float4 PSMain(VSOutput input) : SV_TARGET {
-        return float4(input.color, 1.0);
-    }
-    )";
-
-    m_testShader = std::make_unique<Shader>();
-    bool success = m_testShader->Initialize(m_device->GetDevice(), triangleShaderDesc);
-    printf("Shader init result: %s\n", success ? "SUCCESS" : "FAILED");
-    if (!success) {
-        throw std::runtime_error("Failed to initialize test shader");
-    }
 }
 
 // =============================================================================
@@ -393,7 +356,7 @@ void Renderer::ClearBackBuffer(CommandList* cmdList, const float clearColor[4]) 
 }
 
 void Renderer::TestMeshDraw(CommandList* cmdList) {
-    if (!m_testShader || !cmdList) {
+    if (!cmdList) {
         printf("TestMeshDraw: Invalid resources\n");
         return;
     }
@@ -404,8 +367,9 @@ void Renderer::TestMeshDraw(CommandList* cmdList) {
         return;
     }
 
-    // Set pipeline state and root signature
-    m_testShader->SetPipelineState(d3dCmdList);
+    // Set pipeline state and root signature from triangle pass
+    d3dCmdList->SetGraphicsRootSignature(m_trianglePass->GetRootSignature());
+    d3dCmdList->SetPipelineState(m_trianglePass->GetPipelineState());
 
     // Bind geometry buffers once
     m_geometryManager->BindVertexIndexBuffers(cmdList);
@@ -413,7 +377,7 @@ void Renderer::TestMeshDraw(CommandList* cmdList) {
     // Set primitive topology
     d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    // Draw triangle if ready (replaces manual geometry description lookup)
+    // Draw triangle if ready
     if (m_geometryManager->IsMeshReady(m_triangleMesh)) {
         const MeshRenderData* renderData = m_geometryManager->GetMeshRenderData(m_triangleMesh);
         if (renderData) {
@@ -426,14 +390,26 @@ void Renderer::TestMeshDraw(CommandList* cmdList) {
             );
         }
     } else {
-        // Mesh not ready yet - uploads happen automatically in BeginFrame
-        // This message will only appear for the first few frames while uploading
         static bool hasWarned = false;
         if (!hasWarned) {
             printf("Triangle mesh not ready yet (uploading...)\n");
             hasWarned = true;
         }
     }
+}
+
+void Renderer::DrawMesh(CommandList* cmdList, MeshHandle meshHandle) {
+   ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
+   const MeshRenderData* renderData = m_geometryManager->GetMeshRenderData(meshHandle);
+   if (renderData) {
+       d3dCmdList->DrawIndexedInstanced(
+           renderData->indexCount,     // IndexCountPerInstance
+           1,                          // InstanceCount
+           renderData->indexOffset,    // StartIndexLocation
+           renderData->vertexOffset,   // BaseVertexLocation
+           0                           // StartInstanceLocation
+       );
+   }
 }
 
 // =============================================================================

@@ -2,6 +2,18 @@
 
 #include "dx12/core/DX12Common.h"
 
+struct RenderContext {
+    float deltaTime;
+
+    // TODO: ...
+    // Camera/view data
+    // view
+    // projection
+    // viewProjection Matrix
+
+    // entt::registry
+};
+
 struct ShaderDescription {
     std::string name;
     std::string vertexShaderSource;

@@ -59,10 +59,10 @@ int main() {
         // Draw test triangle
         renderer->TestMeshDraw(cmdList);
 
-        static uint32_t frameCount = 0;
-        if (++frameCount % 180 * 9 == 0) {  // Every 9 seconds
-            renderer->GetGeometryManager()->PrintDebugInfo();
-        }
+        // static uint32_t frameCount = 0;
+        // if (++frameCount % 180 * 9 == 0) {  // Every 9 seconds
+        //     renderer->GetGeometryManager()->PrintDebugInfo();
+        // }
 
         // Finish frame and present
         renderer->EndFrame(g_config);

@@ -10,7 +10,7 @@
 // Geometry System
 #include "../resources/GeometryManager.h"
 // TEMP
-#include "dx12/resources/Shader.h"
+#include "renderpasses/TrianglePass.h"
 
 class Renderer {
 public:
@@ -43,11 +43,15 @@ public:
     // Geometry Management
     GeometryManager* GetGeometryManager() const { return m_geometryManager.get(); }
 
+    // Draw Call
+    void DrawMesh(CommandList* cmdList, MeshHandle meshHandle);
+
     // Debug/Development
     void DebugPrintValidationMessages() { m_device->PrintAndClearInfoQueue(); }
 
-    // Testing/Development - Clean Interface
+    // TODO: Testing/Development
     void TestMeshDraw(CommandList* cmdList);
+    std::unique_ptr<TriangleClass> m_trianglePass;
 
 private:
     // Initialization
@@ -78,7 +82,4 @@ private:
 
     // Command Recording
     std::unique_ptr<CommandList> m_commandList;
-
-    // Testing - Shader System
-    std::unique_ptr<Shader> m_testShader;
 };

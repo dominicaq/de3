@@ -27,10 +27,6 @@ public:
     GeometryManager(const GeometryManager&) = delete;
     GeometryManager& operator=(const GeometryManager&) = delete;
 
-    // =============================================================================
-    // Public Interface - Microsoft Engine Sample Style
-    // =============================================================================
-
     // Create a mesh from description (returns immediately with handle)
     MeshHandle CreateMesh(const MeshDescription& desc);
 
