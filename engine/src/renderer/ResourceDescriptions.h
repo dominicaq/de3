@@ -1,6 +1,8 @@
 #pragma once
 
 #include "dx12/core/DX12Common.h"
+#include "renderer/Renderer.h"
+#include "resources/GeometryManager.h"
 #include <entt/entt.hpp>
 
 struct RenderContext {
@@ -11,8 +13,14 @@ struct RenderContext {
     // view
     // projection
     // viewProjection Matrix
-
     entt::registry& registry;
+
+    // Resource managers
+    GeometryManager* geometryManager;
+    // TextureManager* textureManager;
+    // MaterialManager* materialManager;
+
+    Renderer* renderer;
 };
 
 struct ShaderDescription {

@@ -9,6 +9,7 @@
 #include <entt/entt.hpp>
 
 // Geometry System
+#include "renderer/renderpasses/RenderPassManager.h"
 #include "resources/GeometryManager.h"
 // TEMP
 #include "renderer/renderpasses/TrianglePass.h"
@@ -44,16 +45,17 @@ int main() {
 
     // TEMP CODE
     entt::registry registry;
-    RenderContext ctx {0.0f, registry};
-
-    // Triangle
-    auto entity = registry.create();
 
     // Geometry System
     DX12Device* device = renderer->GetDevice();
-    std::unique_ptr<GeometryManager> geometryManager = std::make_unique<GeometryManager>(device->GetAllocator());
+    RenderPassManager passManager;
+    passManager.AddPass(std::make_unique<TrianglePass>());
+    if (!passManager.InitializeAllPasses(device->GetD3D12Device())) {
+        throw std::runtime_error("Failed to init RenderPasses");
+    }
 
-    // Optional: Configure geometry manager
+    // Configure
+    std::unique_ptr<GeometryManager> geometryManager = std::make_unique<GeometryManager>(device->GetAllocator());
     GeometryManager::Config geoConfig;
     geoConfig.vertexBufferSize = 128 * 1024 * 1024;  // 128MB - adjust as needed
     geoConfig.indexBufferSize = 32 * 1024 * 1024;    // 32MB
@@ -61,13 +63,14 @@ int main() {
     geoConfig.maxUploadsPerFrame = 8;
     geometryManager->SetConfig(geoConfig);
 
-    std::unique_ptr<TriangleClass> trianglepass = std::make_unique<TriangleClass>();
-    if (!trianglepass->Initialize(device->GetDevice())) {
-        throw std::runtime_error("Failed to initialize triangle render pass");
-    }
+    // Now create context with geometry manager
+    RenderContext ctx {0.0f, registry};
+    ctx.geometryManager = geometryManager.get();
+    ctx.renderer = renderer.get();
 
+    // Hello Triangle
+    auto entity = registry.create();
     MeshHandle triangleMesh = INVALID_MESH_HANDLE;
-    // Create triangle vertices
     VertexAttributes triangleVertices[] = {
         { {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f} },    // Top - Red
         { {1.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f} },   // Bottom right - Green
@@ -75,14 +78,13 @@ int main() {
     };
     uint32_t triangleIndices[] = { 0, 1, 2 };
 
-    // Create mesh using simple interface
+    // Create mesh using description
     MeshDescription triangleDesc = {};
     triangleDesc.name = "Triangle";
     triangleDesc.vertices = triangleVertices;
     triangleDesc.indices = triangleIndices;
     triangleDesc.vertexCount = 3;
     triangleDesc.indexCount = 3;
-
     triangleMesh = geometryManager->CreateMesh(triangleDesc);
     if (triangleMesh == INVALID_MESH_HANDLE) {
         throw std::runtime_error("Failed to create triangle mesh");
@@ -95,57 +97,12 @@ int main() {
     int frameCount = 0;
     while (!window.ShouldClose()) {
         window.ProcessEvents();
-        // Begin frame and get command list
+
         CommandList* cmdList = renderer->BeginFrame();
         // Handle geometry uploads automatically
         static uint32_t frameCounter = 0;
         geometryManager->BeginFrame(frameCounter++, cmdList);
-
-        renderer->SetupRenderTarget(cmdList);
-        renderer->SetupViewportAndScissor(cmdList);
-
-        // Rainbow color that cycles over time
-        static float time = 0.0f;
-        time += 0.016f; // ~60fps increment
-
-        float r = (sin(time * 2.0f) + 1.0f) * 0.5f;
-        float g = (sin(time * 2.0f + 2.094f) + 1.0f) * 0.5f; // 2π/3 offset
-        float b = (sin(time * 2.0f + 4.188f) + 1.0f) * 0.5f; // 4π/3 offset
-        float clearColor[4] = { r, g, b, 1.0f };
-
-        // Clear back buffer with animated rainbow color
-        renderer->ClearBackBuffer(cmdList, clearColor);
-
-        // Draw test triangle
-        ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
-        if (!d3dCmdList) {
-            printf("TestMeshDraw: Failed to get D3D12 command list\n");
-            return -1;
-        }
-
-        // Set pipeline state and root signature from triangle pass
-        d3dCmdList->SetGraphicsRootSignature(trianglepass->GetRootSignature());
-        d3dCmdList->SetPipelineState(trianglepass->GetPipelineState());
-        d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-        // renderer->TestMeshDraw(cmdList);
-        // Bind geometry buffers once
-        geometryManager->BindVertexIndexBuffers(cmdList);
-        const MeshRenderData* renderData = geometryManager->GetMeshRenderData(triangleMesh);
-        if (renderData) {
-            d3dCmdList->DrawIndexedInstanced(
-                renderData->indexCount,     // IndexCountPerInstance
-                1,                          // InstanceCount
-                renderData->indexOffset,    // StartIndexLocation
-                renderData->vertexOffset,   // BaseVertexLocation
-                0                           // StartInstanceLocation
-            );
-        }
-        // static uint32_t frameCount = 0;
-        // if (++frameCount % 180 * 9 == 0) {  // Every 9 seconds
-        //     renderer->GetGeometryManager()->PrintDebugInfo();
-        // }
-
+        passManager.ExecuteAllPasses(cmdList, ctx);
         // Finish frame and present
         renderer->EndFrame(g_config);
 
@@ -153,6 +110,11 @@ int main() {
         if (frameCount % g_config.targetFPS == 0) {
             renderer->DebugPrintValidationMessages();
         }
+
+        // static uint32_t frameCount = 0;
+        // if (++frameCount % 180 * 9 == 0) {  // Every 9 seconds
+        //     renderer->GetGeometryManager()->PrintDebugInfo();
+        // }
 #endif
 
         if (g_config.cappedFPS && !g_config.vsync) {

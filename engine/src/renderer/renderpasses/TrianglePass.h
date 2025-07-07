@@ -1,8 +1,10 @@
+#pragma once
+
 #include "RenderPass.h"
 
-class TriangleClass : public RenderPass {
+class TrianglePass : public RenderPass {
 public:
-    ~TriangleClass() = default;
+    ~TrianglePass() = default;
 
     virtual bool Initialize(ID3D12Device* device) override {
         CompileShaders();
@@ -12,8 +14,36 @@ public:
     }
 
     virtual void Execute(CommandList* cmdList, const RenderContext& ctx) override {
-        // Empty implementation
+        ctx.renderer->SetupRenderTarget(cmdList);
+        ctx.renderer->SetupViewportAndScissor(cmdList);
+
+        // Rainbow color that cycles over time
+        static float time = 0.0f;
+        time += 0.016f; // ~60fps increment
+
+        float r = (sin(time * 2.0f) + 1.0f) * 0.5f;
+        float g = (sin(time * 2.0f + 2.094f) + 1.0f) * 0.5f; // 2π/3 offset
+        float b = (sin(time * 2.0f + 4.188f) + 1.0f) * 0.5f; // 4π/3 offset
+        float clearColor[4] = { r, g, b, 1.0f };
+
+        // Clear back buffer with animated rainbow color
+        ctx.renderer->ClearBackBuffer(cmdList, clearColor);
+
+        ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
+        if (!d3dCmdList) {
+            printf("TriangleExecute: Failed to get D3D12 command list\n");
+            return;
+        }
+
+        d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        ctx.geometryManager->BindVertexIndexBuffers(cmdList);
+
+        // TODO: TEMP
+        // 1 = first handle
+        DrawMesh(cmdList, ctx.geometryManager, 1);
     }
+
+    virtual char* GetName() const override { return "Triangle Pass"; }
 
 private:
     Shader m_vertexShader;

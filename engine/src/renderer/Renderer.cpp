@@ -7,7 +7,7 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
     }
 
     // Create command queue manager
-    ID3D12Device* device = m_device->GetDevice();
+    ID3D12Device* device = m_device->GetD3D12Device();
     m_commandManager = std::make_unique<CommandQueueManager>();
     if (!m_commandManager->Initialize(device)) {
         throw std::runtime_error("Failed to create command queues");
@@ -63,7 +63,7 @@ Renderer::~Renderer() {
 bool Renderer::InitializeFrameResources() {
     UINT bufferCount = m_swapChain->GetBufferCount();
     m_frameResources.resize(bufferCount);
-    ID3D12Device* device = m_device->GetDevice();
+    ID3D12Device* device = m_device->GetD3D12Device();
 
     for (UINT i = 0; i < bufferCount; i++) {
         FrameResources& frame = m_frameResources[i];
@@ -334,7 +334,7 @@ bool Renderer::CreateBackBufferRTVs() {
     rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
-    ID3D12Device* device = m_device->GetDevice();
+    ID3D12Device* device = m_device->GetD3D12Device();
     ThrowIfFailed(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvDescriptorHeap)));
 
 #ifdef _DEBUG
