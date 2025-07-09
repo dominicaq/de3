@@ -41,7 +41,7 @@ int main() {
         }
     });
 
-    PrintConfigStats(g_config);
+    PrintConfigStats(g_config);\
 
     // TEMP CODE
     entt::registry registry;
@@ -94,21 +94,30 @@ int main() {
     // END OF TEMP
 
     // Game loop
+    FPSUtils::FPSUtils fpsUtils;
     int frameCount = 0;
     while (!window.ShouldClose()) {
         window.ProcessEvents();
 
+        // Render loop
         CommandList* cmdList = renderer->BeginFrame();
-        // Handle geometry uploads automatically
-        static uint32_t frameCounter = 0;
-        geometryManager->BeginFrame(frameCounter++, cmdList);
+        geometryManager->BeginFrame(frameCount++, cmdList);
         passManager.ExecuteAllPasses(cmdList, ctx);
-        // Finish frame and present
         renderer->EndFrame(g_config);
+
+        if (g_config.cappedFPS) {
+            fpsUtils.LimitFrameRate(g_config.targetFPS);
+        }
+        frameCount++;
 
 #ifdef _DEBUG
         if (frameCount % g_config.targetFPS == 0) {
             renderer->DebugPrintValidationMessages();
+        }
+
+        float fps;
+        if (fpsUtils.UpdateFPSCounter(fps, 1000)) {
+            std::cout << "FPS: " << fps << std::endl;
         }
 
         // static uint32_t frameCount = 0;
@@ -116,26 +125,8 @@ int main() {
         //     renderer->GetGeometryManager()->PrintDebugInfo();
         // }
 #endif
-
-        if (g_config.cappedFPS && !g_config.vsync) {
-            FPSUtils::LimitFrameRate(g_config.targetFPS);
-        }
-
-        float fps;
-        if (FPSUtils::UpdateFPSCounter(fps, 1000)) {
-            std::cout << "FPS: " << fps << std::endl;
-        }
     }
 
-    std::cout << "Shutting down engine..." << std::endl;
-    if (renderer) {
-        renderer->WaitForAllFrames();
-        renderer->FlushGPU();
-    }
-
-    geometryManager.reset();
-    renderer.reset();
-    window.Destroy();
     std::cout << "Engine shutdown complete." << std::endl;
     return 0;
 }

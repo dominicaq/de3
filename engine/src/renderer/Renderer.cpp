@@ -61,7 +61,7 @@ Renderer::~Renderer() {
     printf("Releasing back buffer RTVs...\n");
     ReleaseBackBufferRTVs();
 
-    printf("Clearing frame resources...\n");
+    printf("Rleasing GPU Resources...\n");
     m_frameResources.clear();
     m_commandList.reset();
     m_swapChain.reset();
@@ -119,8 +119,9 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
 
     // Wait for all frames before reconfiguring
     WaitForAllFrames();
-    ReleaseBackBufferRTVs();
+    FlushGPU();
 
+    ReleaseBackBufferRTVs();
     if (!m_swapChain->Reconfigure(width, height, bufferCount)) {
         printf("Failed to reconfigure swap chain\n");
         return;

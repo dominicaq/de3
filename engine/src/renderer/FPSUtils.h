@@ -1,64 +1,54 @@
 #pragma once
-
 #include <chrono>
 #include <thread>
 
 namespace FPSUtils {
-    // Limits frame rate to target FPS (does nothing if VSync is enabled)
-    inline void LimitFrameRate(int targetFPS) {
-        if (targetFPS <= 0) return;
 
-        static LARGE_INTEGER frequency;
-        static LARGE_INTEGER lastFrame;
-        static bool initialized = false;
+    class FPSUtils {
+    private:
+        // Frame limiter state
+        std::chrono::steady_clock::time_point nextFrame;
+        bool limiterInitialized = false;
 
-        if (!initialized) {
-            QueryPerformanceFrequency(&frequency);
-            QueryPerformanceCounter(&lastFrame);
-            initialized = true;
-            return;
-        }
+        // FPS counter state
+        std::chrono::high_resolution_clock::time_point lastTime;
+        int frameCount = 0;
+        float fps = 0.0f;
 
-        LARGE_INTEGER targetTicks;
-        targetTicks.QuadPart = frequency.QuadPart / targetFPS;
+    public:
+        FPSUtils() : nextFrame(std::chrono::steady_clock::now()),
+                     lastTime(std::chrono::high_resolution_clock::now()) {}
 
-        LARGE_INTEGER now;
-        QueryPerformanceCounter(&now);
+        void LimitFrameRate(int targetFPS) {
+            if (targetFPS <= 0) return;
 
-        LARGE_INTEGER elapsed;
-        elapsed.QuadPart = now.QuadPart - lastFrame.QuadPart;
-
-        if (elapsed.QuadPart < targetTicks.QuadPart) {
-            // Busy wait for precise timing
-            while (elapsed.QuadPart < targetTicks.QuadPart) {
-                QueryPerformanceCounter(&now);
-                elapsed.QuadPart = now.QuadPart - lastFrame.QuadPart;
+            if (!limiterInitialized) {
+                nextFrame = std::chrono::steady_clock::now();
+                limiterInitialized = true;
+                return;
             }
+
+            // Use microseconds for better precision
+            nextFrame += std::chrono::microseconds(1000000 / targetFPS);
+            std::this_thread::sleep_until(nextFrame);
         }
 
-        lastFrame.QuadPart += targetTicks.QuadPart;
-    }
+        bool UpdateFPSCounter(float& outFPS, int updateIntervalMS = 500) {
+            frameCount++;
+            auto now = std::chrono::high_resolution_clock::now();
+            auto elapsed = now - lastTime;
 
-    // Call this every frame to update FPS counter, returns true when FPS updates
-    inline bool UpdateFPSCounter(float& outFPS, int updateIntervalMS = 500) {
-        static auto lastTime = std::chrono::high_resolution_clock::now();
-        static int frameCount = 0;
-        static float fps = 0.0f;
+            if (elapsed >= std::chrono::milliseconds(updateIntervalMS)) {
+                fps = frameCount / std::chrono::duration<float>(elapsed).count();
+                fps = std::round(fps);
+                frameCount = 0;
+                lastTime = now;
+                outFPS = fps;
+                return true; // FPS was updated
+            }
 
-        frameCount++;
-        auto now = std::chrono::high_resolution_clock::now();
-        auto elapsed = now - lastTime;
-
-        if (elapsed >= std::chrono::milliseconds(updateIntervalMS)) {
-            fps = frameCount / std::chrono::duration<float>(elapsed).count();
-            fps = std::round(fps);
-            frameCount = 0;
-            lastTime = now;
             outFPS = fps;
-            return true; // FPS was updated
+            return false; // FPS not updated this frame
         }
-
-        outFPS = fps;
-        return false; // FPS not updated this frame
-    }
-} // namespace FPSUtils
+    };
+}

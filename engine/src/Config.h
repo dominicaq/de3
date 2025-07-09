@@ -16,13 +16,15 @@ struct EngineConfig {
 
     // Renderer settings
     bool enableDebugLayer = _DEBUG;
-    uint32_t debugFrameInterval = 60;
-    uint32_t backBufferCount = 2;
+    uint32_t backBufferCount = 3; // range = [1,2,..n]
     DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 
     // Performance settings
     uint32_t targetFPS = 180;
     bool cappedFPS = false;
+
+    // DEBUG SETTINGS
+    uint32_t debugFrameInterval = 60;
 };
 
 inline void PrintConfigStats(const EngineConfig& config) {

@@ -49,8 +49,6 @@ bool SwapChain::Initialize(UINT width, UINT height) {
         return false;
     }
 
-    m_device->GetFactory()->MakeWindowAssociation(m_hwnd, DXGI_MWA_NO_ALT_ENTER);
-
     if (!CreateBackBuffers()) {
         return false;
     }
