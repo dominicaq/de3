@@ -48,12 +48,27 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
 }
 
 Renderer::~Renderer() {
+    printf("Renderer destructor starting...\n");
+
     if (m_device && m_commandManager) {
-        WaitForFrame(m_currentFrameIndex);
+        printf("Waiting for all frames...\n");
+        WaitForAllFrames();
+        printf("Flushing GPU...\n");
+        FlushGPU();
+        printf("GPU flush complete.\n");
     }
 
+    printf("Releasing back buffer RTVs...\n");
     ReleaseBackBufferRTVs();
+
+    printf("Clearing frame resources...\n");
     m_frameResources.clear();
+    m_commandList.reset();
+    m_swapChain.reset();
+    m_commandManager.reset();
+    m_device.reset();
+
+    printf("Renderer destructor complete.\n");
 }
 
 // =============================================================================
@@ -78,6 +93,7 @@ bool Renderer::InitializeFrameResources() {
         ThrowIfFailed(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&frame.frameFence)));
 
         // Create fence event
+        frame.fenceValue = 0;
         frame.fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         if (!frame.fenceEvent) {
             throw std::runtime_error("Failed to create fence event for frame");
@@ -377,4 +393,29 @@ D3D12_CPU_DESCRIPTOR_HANDLE Renderer::GetBackBufferRTV(UINT index) const {
     D3D12_CPU_DESCRIPTOR_HANDLE handle = m_rtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
     handle.ptr += index * m_rtvDescriptorSize;
     return handle;
+}
+
+void Renderer::FlushGPU() {
+    if (!m_commandManager || m_frameResources.empty()) {
+        return;
+    }
+
+    auto* graphicsQueue = m_commandManager->GetGraphicsQueue();
+    if (!graphicsQueue) return;
+
+    ID3D12CommandQueue* queue = graphicsQueue->GetCommandQueue();
+    if (!queue) return;
+
+    // Use the first frame's fence for GPU flush
+    FrameResources& frame = m_frameResources[0];
+
+    // Signal with a unique fence value
+    const UINT64 flushFenceValue = m_nextFenceValue++;
+    ThrowIfFailed(queue->Signal(frame.frameFence.Get(), flushFenceValue));
+
+    // Wait for completion
+    if (frame.frameFence->GetCompletedValue() < flushFenceValue) {
+        ThrowIfFailed(frame.frameFence->SetEventOnCompletion(flushFenceValue, frame.fenceEvent));
+        WaitForSingleObject(frame.fenceEvent, INFINITE);
+    }
 }

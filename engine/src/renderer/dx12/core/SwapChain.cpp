@@ -20,6 +20,7 @@ SwapChain::SwapChain(DX12Device* device, ID3D12CommandQueue* commandQueue, HWND 
 
 SwapChain::~SwapChain() {
     ReleaseBackBuffers();
+    m_swapChain.Reset();
 }
 
 bool SwapChain::Initialize(UINT width, UINT height) {

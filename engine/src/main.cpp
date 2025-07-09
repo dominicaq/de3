@@ -128,6 +128,13 @@ int main() {
     }
 
     std::cout << "Shutting down engine..." << std::endl;
+    if (renderer) {
+        renderer->WaitForAllFrames();
+        renderer->FlushGPU();
+    }
+
+    geometryManager.reset();
+    renderer.reset();
     window.Destroy();
     std::cout << "Engine shutdown complete." << std::endl;
     return 0;

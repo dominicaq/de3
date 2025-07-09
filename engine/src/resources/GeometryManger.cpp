@@ -15,6 +15,9 @@ GeometryManager::GeometryManager(D3D12MA::Allocator* allocator)
 GeometryManager::~GeometryManager() {
     // Wait for any pending uploads to complete
     FlushUploads();
+    m_vertexBuffer.reset();
+    m_indexBuffer.reset();
+    m_uploadHeap.reset();
 }
 
 bool GeometryManager::Initialize() {

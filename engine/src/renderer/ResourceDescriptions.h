@@ -5,20 +5,23 @@
 #include "resources/GeometryManager.h"
 #include <entt/entt.hpp>
 
+struct FrameData {
+    float deltaTime;
+    // Matrix4 view;
+    // Matrix4 projection;
+    // Matrix4 viewProjection;
+    // Other per-frame data
+};
+
 struct RenderContext {
+    // const FrameData& frameData;
     float deltaTime;
 
-    // TODO: ...
-    // Camera/view data
-    // view
-    // projection
-    // viewProjection Matrix
     entt::registry& registry;
-
-    // Resource managers
     GeometryManager* geometryManager;
     // TextureManager* textureManager;
     // MaterialManager* materialManager;
+    // ShaderManager* shaderManager;
 
     Renderer* renderer;
 };

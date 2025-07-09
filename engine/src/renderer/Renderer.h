@@ -47,7 +47,7 @@ public:
 
     // TODO: Testing/Development
     void TestMeshDraw(CommandList* cmdList);
-
+    void FlushGPU();
 private:
     // Initialization
     bool InitializeFrameResources();
