@@ -19,7 +19,7 @@ public:
 
         // Rainbow color that cycles over time
         static float time = 0.0f;
-        time += 0.016f; // ~60fps increment
+        time += ctx.deltaTime;
 
         float r = (sin(time * 2.0f) + 1.0f) * 0.5f;
         float g = (sin(time * 2.0f + 2.094f) + 1.0f) * 0.5f; // 2π/3 offset

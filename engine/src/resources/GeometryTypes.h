@@ -29,10 +29,9 @@ struct VertexAttributes {
 static_assert(sizeof(VertexAttributes) == 6 * sizeof(float), "VertexAttributes size mismatch");
 
 // =============================================================================
-// Microsoft-Style Mesh System
+// Mesh System
 // =============================================================================
 
-// Mesh description for creation (Microsoft engine sample style)
 struct MeshDescription {
     const char* name = nullptr;
     const VertexAttributes* vertices = nullptr;
@@ -41,7 +40,7 @@ struct MeshDescription {
     uint32_t indexCount = 0;
 };
 
-// Render data for drawing (contains GPU buffer offsets)
+// Render data for drawing
 struct MeshRenderData {
     uint32_t vertexOffset = 0;
     uint32_t vertexCount = 0;
@@ -51,7 +50,7 @@ struct MeshRenderData {
 
 // Mesh state enumeration
 enum class MeshState {
-    PendingUpload,    // Mesh created, waiting for GPU upload
-    Ready,            // Mesh uploaded and ready for rendering
-    PendingDeletion   // Mesh marked for deletion
+    PendingUpload,
+    Ready,
+    PendingDeletion
 };

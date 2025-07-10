@@ -52,11 +52,9 @@ bool Window::Create(const EngineConfig& config) {
 }
 
 void Window::Destroy() {
-    // Clear the resize callback to prevent it from being called during destruction
     m_resizeCallback = nullptr;
 
     if (m_hwnd) {
-        // Remove the window user data to prevent message handling
         SetWindowLongPtr(m_hwnd, GWLP_USERDATA, 0);
 
         DestroyWindow(m_hwnd);

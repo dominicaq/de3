@@ -14,6 +14,9 @@
 // TEMP
 #include "renderer/renderpasses/TrianglePass.h"
 
+using Clock = std::chrono::high_resolution_clock;
+using TimePoint = std::chrono::time_point<Clock>;
+
 static EngineConfig g_config;
 
 int main() {
@@ -41,7 +44,7 @@ int main() {
         }
     });
 
-    PrintConfigStats(g_config);\
+    PrintConfigStats(g_config);
 
     // TEMP CODE
     entt::registry registry;
@@ -94,20 +97,27 @@ int main() {
     // END OF TEMP
 
     // Game loop
+    TimePoint lastTime = Clock::now();
     FPSUtils::FPSUtils fpsUtils;
     int frameCount = 0;
+    float debugPrintTimer = 0;
     while (!window.ShouldClose()) {
+        TimePoint frameStart = Clock::now();
         window.ProcessEvents();
 
         // Render loop
         CommandList* cmdList = renderer->BeginFrame();
-        geometryManager->BeginFrame(frameCount++, cmdList);
+        geometryManager->BeginFrame(frameCount, cmdList);
         passManager.ExecuteAllPasses(cmdList, ctx);
         renderer->EndFrame(g_config);
 
         if (g_config.cappedFPS) {
             fpsUtils.LimitFrameRate(g_config.targetFPS);
         }
+
+        TimePoint frameEnd = Clock::now();
+        std::chrono::duration<float> delta = frameEnd - frameStart;
+        ctx.deltaTime = delta.count();
         frameCount++;
 
 #ifdef _DEBUG
@@ -120,13 +130,15 @@ int main() {
             std::cout << "FPS: " << fps << std::endl;
         }
 
-        // static uint32_t frameCount = 0;
-        // if (++frameCount % 180 * 9 == 0) {  // Every 9 seconds
-        //     renderer->GetGeometryManager()->PrintDebugInfo();
-        // }
+        debugPrintTimer += ctx.deltaTime;
+        if (debugPrintTimer >= 9.0f) {
+            geometryManager->PrintDebugInfo();
+            debugPrintTimer = 0.0f;
+        }
 #endif
     }
 
+    renderer->FlushGPU();
     std::cout << "Engine shutdown complete." << std::endl;
     return 0;
 }

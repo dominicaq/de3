@@ -20,7 +20,6 @@ bool DX12Device::Initialize(bool enableDebugController) {
     m_debugEnabled = enableDebugController;
 
 #ifdef _DEBUG
-    // Enable debug layer BEFORE creating factory and device
     if (enableDebugController) {
         ComPtr<ID3D12Debug> debugController;
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
@@ -28,8 +27,7 @@ bool DX12Device::Initialize(bool enableDebugController) {
             m_debugController = debugController;
             m_debugEnabled = true;
             printf("D3D12 Debug layer enabled\n");
-
-            // Enable additional debug features
+            // Addtional flags
             createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
         } else {
             printf("Failed to enable D3D12 debug layer\n");
@@ -68,7 +66,7 @@ bool DX12Device::Initialize(bool enableDebugController) {
             // Set break on severe errors
             m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
             m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
-            m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, FALSE); // Don't break on warnings
+            m_infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, FALSE);
 
             printf("D3D12 Info Queue configured\n");
         } else {

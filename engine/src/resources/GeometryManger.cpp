@@ -83,7 +83,7 @@ void GeometryManager::SetConfig(const Config& config) {
 }
 
 // =============================================================================
-// Public Interface - Microsoft Engine Sample Style
+// Public Interface
 // =============================================================================
 
 MeshHandle GeometryManager::CreateMesh(const MeshDescription& desc) {
@@ -301,7 +301,6 @@ bool GeometryManager::ProcessSingleUpload(MeshHandle handle) {
 
 bool GeometryManager::UploadData(const void* data, size_t dataSize, size_t destOffset,
                                 size_t uploadOffset, bool isVertexData) {
-    // Copy data to upload heap
     if (!m_uploadHeap->Update(data, static_cast<UINT64>(dataSize), static_cast<UINT64>(uploadOffset))) {
         printf("GeometryManager: Failed to update upload heap\n");
         return false;
@@ -309,7 +308,6 @@ bool GeometryManager::UploadData(const void* data, size_t dataSize, size_t destO
 
     ID3D12GraphicsCommandList* cmdList = m_currentUploadCmdList->GetCommandList();
 
-    // Determine target buffer and state
     Buffer* targetBuffer = isVertexData ? m_vertexBuffer.get() : m_indexBuffer.get();
     D3D12_RESOURCE_STATES targetState = isVertexData ?
         D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER :
@@ -325,7 +323,6 @@ bool GeometryManager::UploadData(const void* data, size_t dataSize, size_t destO
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     cmdList->ResourceBarrier(1, &barrier);
 
-    // Copy data
     cmdList->CopyBufferRegion(
         targetBuffer->GetResource(),
         destOffset,
@@ -367,7 +364,6 @@ void GeometryManager::PerformMaintenance() {
 }
 
 void GeometryManager::FlushUploads() {
-    // Process all remaining uploads
     while (!m_uploadQueue.empty() && m_currentUploadCmdList) {
         ProcessUploadQueue();
     }

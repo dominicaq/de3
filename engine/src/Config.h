@@ -16,7 +16,7 @@ struct EngineConfig {
 
     // Renderer settings
     bool enableDebugLayer = _DEBUG;
-    uint32_t backBufferCount = 3; // range = [1,2,..n]
+    uint32_t backBufferCount = 2; // range = [1,2,..n]
     DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 
     // Performance settings

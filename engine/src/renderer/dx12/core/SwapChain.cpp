@@ -44,7 +44,6 @@ bool SwapChain::Initialize(UINT width, UINT height) {
     if (finalWidth == 0) finalWidth = 1;
     if (finalHeight == 0) finalHeight = 1;
 
-    // Create swap chain components
     if (!CreateSwapChain(finalWidth, finalHeight)) {
         return false;
     }
