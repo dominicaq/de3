@@ -20,7 +20,7 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
         hwnd,
         config.windowWidth,
         config.windowHeight,
-        config.backBufferCount,
+        config.GetBufferCount(),
         config.backBufferFormat
     );
 

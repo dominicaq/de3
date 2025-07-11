@@ -81,14 +81,13 @@ int main() {
     };
     uint32_t triangleIndices[] = { 0, 1, 2 };
 
-    // Create mesh using description
-    MeshDescription triangleDesc = {};
-    triangleDesc.name = "Triangle";
-    triangleDesc.vertices = triangleVertices;
-    triangleDesc.indices = triangleIndices;
-    triangleDesc.vertexCount = 3;
-    triangleDesc.indexCount = 3;
-    triangleMesh = geometryManager->CreateMesh(triangleDesc);
+    // Create a mesh on the CPU (this wont be done by hand in the future)
+    CPUMesh triCPUdata;
+    triCPUdata.vertices = triangleVertices;
+    triCPUdata.indices = triangleIndices;
+    triCPUdata.vertexCount = 3;
+    triCPUdata.indexCount = 3;
+    triangleMesh = geometryManager->CreateMesh(triCPUdata);
     if (triangleMesh == INVALID_MESH_HANDLE) {
         throw std::runtime_error("Failed to create triangle mesh");
     }

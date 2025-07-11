@@ -86,21 +86,21 @@ void GeometryManager::SetConfig(const Config& config) {
 // Public Interface
 // =============================================================================
 
-MeshHandle GeometryManager::CreateMesh(const MeshDescription& desc) {
+MeshHandle GeometryManager::CreateMesh(const CPUMesh& mesh) {
     if (!m_isInitialized) {
         printf("GeometryManager: Not initialized\n");
         return INVALID_MESH_HANDLE;
     }
 
     // Validate input
-    if (!desc.vertices || !desc.indices || desc.vertexCount == 0 || desc.indexCount == 0) {
+    if (!mesh.vertices || !mesh.indices || mesh.vertexCount == 0 || mesh.indexCount == 0) {
         printf("GeometryManager: Invalid mesh description\n");
         return INVALID_MESH_HANDLE;
     }
 
     // Calculate memory requirements
-    size_t vertexDataSize = desc.vertexCount * sizeof(VertexAttributes);
-    size_t indexDataSize = desc.indexCount * sizeof(uint32_t);
+    size_t vertexDataSize = mesh.vertexCount * sizeof(VertexAttributes);
+    size_t indexDataSize = mesh.indexCount * sizeof(uint32_t);
     size_t totalSize = vertexDataSize + indexDataSize;
 
     // Check if we have enough space
@@ -114,8 +114,8 @@ MeshHandle GeometryManager::CreateMesh(const MeshDescription& desc) {
     uint32_t indexOffset = m_indexAllocator->Allocate(indexDataSize) / sizeof(uint32_t);
 
     if (vertexOffset == UINT32_MAX || indexOffset == UINT32_MAX) {
-        printf("GeometryManager: Failed to allocate space for mesh '%s'\n",
-               desc.name ? desc.name : "unnamed");
+        // printf("GeometryManager: Failed to allocate space for mesh '%s'\n",
+        //        mesh.desc.fpath ? mesh.desc.fpath : "unnamed");
         return INVALID_MESH_HANDLE;
     }
 
@@ -125,21 +125,21 @@ MeshHandle GeometryManager::CreateMesh(const MeshDescription& desc) {
     // Create mesh entry
     MeshEntry entry;
     entry.handle = handle;
-    entry.name = desc.name ? std::string(desc.name) : "unnamed";
+    // entry.name = desc.name ? std::string(desc.name) : "unnamed";
     entry.vertexOffset = vertexOffset;
-    entry.vertexCount = desc.vertexCount;
+    entry.vertexCount = mesh.vertexCount;
     entry.indexOffset = indexOffset;
-    entry.indexCount = desc.indexCount;
+    entry.indexCount = mesh.indexCount;
     entry.state = MeshState::PendingUpload;
     entry.uploadFrameIndex = m_frameIndex;
 
     // Copy vertex data
     entry.vertexData.resize(vertexDataSize);
-    memcpy(entry.vertexData.data(), desc.vertices, vertexDataSize);
+    memcpy(entry.vertexData.data(), mesh.vertices, vertexDataSize);
 
     // Copy index data
     entry.indexData.resize(indexDataSize);
-    memcpy(entry.indexData.data(), desc.indices, indexDataSize);
+    memcpy(entry.indexData.data(), mesh.indices, indexDataSize);
 
     // Add to registry
     m_meshRegistry[handle] = std::move(entry);
@@ -148,7 +148,7 @@ MeshHandle GeometryManager::CreateMesh(const MeshDescription& desc) {
     m_uploadQueue.push_back(handle);
 
     printf("GeometryManager: Created mesh '%s' (Handle: %u, Vertices: %u, Indices: %u)\n",
-           entry.name.c_str(), handle, desc.vertexCount, desc.indexCount);
+           entry.name.c_str(), handle, mesh.vertexCount, mesh.indexCount);
 
     return handle;
 }
@@ -170,10 +170,10 @@ bool GeometryManager::IsMeshReady(MeshHandle handle) const {
     return it != m_meshRegistry.end() && it->second.state == MeshState::Ready;
 }
 
-const MeshRenderData* GeometryManager::GetMeshRenderData(MeshHandle handle) const {
+const MeshView* GeometryManager::GetMeshRenderData(MeshHandle handle) const {
     auto it = m_meshRegistry.find(handle);
     if (it != m_meshRegistry.end() && it->second.state == MeshState::Ready) {
-        return &it->second.renderData;
+        return &it->second.view;
     }
     return nullptr;
 }
@@ -284,10 +284,10 @@ bool GeometryManager::ProcessSingleUpload(MeshHandle handle) {
     entry.state = MeshState::Ready;
 
     // Setup render data
-    entry.renderData.vertexOffset = entry.vertexOffset;
-    entry.renderData.vertexCount = entry.vertexCount;
-    entry.renderData.indexOffset = entry.indexOffset;
-    entry.renderData.indexCount = entry.indexCount;
+    entry.view.vertexOffset = entry.vertexOffset;
+    entry.view.vertexCount = entry.vertexCount;
+    entry.view.indexOffset = entry.indexOffset;
+    entry.view.indexCount = entry.indexCount;
 
     // Clear temporary data to save memory
     entry.vertexData.clear();

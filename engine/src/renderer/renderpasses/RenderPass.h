@@ -3,7 +3,7 @@
 #include "../dx12/core/DX12Common.h"
 #include "../dx12/core/CommandList.h"
 #include "../dx12/resources/Shader.h"
-#include "../ResourceDescriptions.h"
+#include "../RenderData.h"
 
 class RenderPass {
 public:
@@ -31,7 +31,7 @@ protected:
             return;
         }
 
-        const MeshRenderData* renderData = geometryManager->GetMeshRenderData(meshHandle);
+        const MeshView* renderData = geometryManager->GetMeshRenderData(meshHandle);
         if (renderData) {
             cmdList->GetCommandList()->DrawIndexedInstanced(
                 renderData->indexCount,     // IndexCountPerInstance
@@ -50,7 +50,7 @@ protected:
             return;
         }
 
-        const MeshRenderData* renderData = geometryManager->GetMeshRenderData(meshHandle);
+        const MeshView* renderData = geometryManager->GetMeshRenderData(meshHandle);
         if (renderData) {
             cmdList->GetCommandList()->DrawIndexedInstanced(
                 renderData->indexCount,

@@ -7,7 +7,7 @@
 #include <string>
 #include <queue>
 
-#include "GeometryTypes.h"
+#include "RenderTypes.h"
 #include "LinearAllocator.h"
 #include "renderer/dx12/resources/Buffer.h"
 #include "renderer/dx12/core/CommandList.h"
@@ -28,7 +28,7 @@ public:
     GeometryManager& operator=(const GeometryManager&) = delete;
 
     // Create a mesh from description (returns immediately with handle)
-    MeshHandle CreateMesh(const MeshDescription& desc);
+    MeshHandle CreateMesh(const CPUMesh& mesh);
 
     // Destroy a mesh (cleanup happens automatically)
     void DestroyMesh(MeshHandle handle);
@@ -37,7 +37,7 @@ public:
     bool IsMeshReady(MeshHandle handle) const;
 
     // Get render data for a mesh (returns nullptr if not ready)
-    const MeshRenderData* GetMeshRenderData(MeshHandle handle) const;
+    const MeshView* GetMeshRenderData(MeshHandle handle) const;
 
     // Frame management - call once per frame
     void BeginFrame(uint32_t frameIndex, CommandList* uploadCmdList);
@@ -102,7 +102,7 @@ private:
         std::vector<uint8_t> indexData;
 
         // Render data (populated after upload)
-        MeshRenderData renderData;
+        MeshView view;
     };
 
     // =============================================================================

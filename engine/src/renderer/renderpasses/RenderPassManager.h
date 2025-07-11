@@ -2,7 +2,7 @@
 #include "../dx12/core/DX12Common.h"
 #include "../dx12/core/CommandList.h"
 #include "../dx12/resources/Shader.h"
-#include "../ResourceDescriptions.h"
+#include "../RenderData.h"
 #include "RenderPass.h"
 #include <vector>
 #include <memory>

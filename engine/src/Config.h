@@ -15,16 +15,19 @@ struct EngineConfig {
     bool vsync = true;
 
     // Renderer settings
-    bool enableDebugLayer = _DEBUG;
-    uint32_t backBufferCount = 2; // range = [1,2,..n]
+    bool useTripleBuffering = true;
     DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-
-    // Performance settings
+    bool cappedFPS = true;
     uint32_t targetFPS = 180;
-    bool cappedFPS = false;
 
     // DEBUG SETTINGS
     uint32_t debugFrameInterval = 60;
+    bool enableDebugLayer = _DEBUG;
+
+    uint32_t GetBufferCount() const {
+        // Triple buffering only provides benefits with VSync enabled
+        return (vsync && useTripleBuffering) ? 3 : 2;
+    }
 };
 
 inline void PrintConfigStats(const EngineConfig& config) {
@@ -41,18 +44,15 @@ inline void PrintConfigStats(const EngineConfig& config) {
     std::cout << "\n[Renderer Settings]" << std::endl;
     std::cout << "Debug Layer: " << (config.enableDebugLayer ? "Enabled" : "Disabled") << std::endl;
     std::cout << "Buffering: ";
-    switch(config.backBufferCount) {
+    switch(config.GetBufferCount()) {
         case 2:
             std::cout << "Double buffering (2 buffers)" << std::endl;
             break;
         case 3:
             std::cout << "Triple buffering (3 buffers)" << std::endl;
             break;
-        case 4:
-            std::cout << "Quad buffering (4 buffers)" << std::endl;
-            break;
         default:
-            std::cout << config.backBufferCount << " buffers" << std::endl;
+            std::cout << config.GetBufferCount() << " buffers" << std::endl;
             break;
     }
 
