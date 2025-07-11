@@ -2,16 +2,22 @@
 #include <iostream>
 #include "Window.h"
 #include "Config.h"
+
 // Engine includes
 #include "renderer/Renderer.h"
 #include "renderer/FPSUtils.h"
-
 #include <entt/entt.hpp>
+
+// ECS systems
+#include "components/systems/TransformSystem.h"
+#include "components/systems/GameObjectSystem.h"
 
 // Geometry System
 #include "renderer/renderpasses/RenderPassManager.h"
 #include "resources/GeometryManager.h"
+
 // TEMP
+#include "renderer/renderpasses/ForwardPass.h"
 #include "renderer/renderpasses/TrianglePass.h"
 
 using Clock = std::chrono::high_resolution_clock;
@@ -52,7 +58,8 @@ int main() {
     // Geometry System
     DX12Device* device = renderer->GetDevice();
     RenderPassManager passManager;
-    passManager.AddPass(std::make_unique<TrianglePass>());
+    passManager.AddPass(std::make_unique<ForwardPass>());
+    // passManager.AddPass(std::make_unique<TrianglePass>());
     if (!passManager.InitializeAllPasses(device->GetD3D12Device())) {
         throw std::runtime_error("Failed to init RenderPasses");
     }
@@ -74,19 +81,41 @@ int main() {
     // Hello Triangle
     auto entity = registry.create();
     MeshHandle triangleMesh = INVALID_MESH_HANDLE;
-    VertexAttributes triangleVertices[] = {
-        { {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f} },    // Top - Red
-        { {1.0f, -1.0f, 0.0f}, {0.0f, 1.0f, 0.0f} },   // Bottom right - Green
-        { {-1.0f, -1.0f, 0.0f}, {0.0f, 0.0f, 1.0f} }   // Bottom left - Blue
+    VertexAttributes cubeVertices[] = {
+        // Front face
+        { {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 0 - Bottom left - Red
+        { { 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f} },  // 1 - Bottom right - Green
+        { { 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f} },  // 2 - Top right - Blue
+        { {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f} },  // 3 - Top left - Yellow
+
+        // Back face
+        { {-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f} },  // 4 - Bottom left - Magenta
+        { { 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f} },  // 5 - Bottom right - Cyan
+        { { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f} },  // 6 - Top right - White
+        { {-0.5f,  0.5f, -0.5f}, {0.5f, 0.5f, 0.5f} }   // 7 - Top left - Gray
     };
-    uint32_t triangleIndices[] = { 0, 1, 2 };
+
+    uint32_t cubeIndices[] = {
+        // Front face
+        0, 1, 2,  2, 3, 0,
+        // Back face
+        4, 6, 5,  6, 4, 7,
+        // Left face
+        4, 0, 3,  3, 7, 4,
+        // Right face
+        1, 5, 6,  6, 2, 1,
+        // Top face
+        3, 2, 6,  6, 7, 3,
+        // Bottom face
+        4, 5, 1,  1, 0, 4
+    };
 
     // Create a mesh on the CPU (this wont be done by hand in the future)
     CPUMesh triCPUdata;
-    triCPUdata.vertices = triangleVertices;
-    triCPUdata.indices = triangleIndices;
-    triCPUdata.vertexCount = 3;
-    triCPUdata.indexCount = 3;
+    triCPUdata.vertices = cubeVertices;
+    triCPUdata.indices = cubeIndices;
+    triCPUdata.vertexCount = 8;
+    triCPUdata.indexCount = 36;
     triangleMesh = geometryManager->CreateMesh(triCPUdata);
     if (triangleMesh == INVALID_MESH_HANDLE) {
         throw std::runtime_error("Failed to create triangle mesh");
@@ -94,6 +123,9 @@ int main() {
 
     printf("Created triangle mesh with handle %u\n", triangleMesh);
     // END OF TEMP
+
+    GameObjectSystem gameObjectSystem(ctx.registry);
+    TransformSystem transformSystem(ctx.registry);
 
     // Game loop
     TimePoint lastTime = Clock::now();
@@ -118,6 +150,10 @@ int main() {
         std::chrono::duration<float> delta = frameEnd - frameStart;
         ctx.deltaTime = delta.count();
         frameCount++;
+
+        // ECS updates
+        gameObjectSystem.updateAll(0, ctx.deltaTime);
+        transformSystem.updateTransformComponents();
 
 #ifdef _DEBUG
         if (frameCount % g_config.targetFPS == 0) {
