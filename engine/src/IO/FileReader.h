@@ -1,9 +1,18 @@
 #pragma once
 
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+
+#include "tiny_gltf.h"
+
 #include <string>
 #include <vector>
 #include <fstream>
 
+// TODO:
+// Single IO entry point
+// load textures, meshes, files, etc
 class FileReader {
 public:
     static std::string ReadFile(const std::string& filepath) {

@@ -41,6 +41,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     interface
     "../external/D3D12MemoryAllocator/include"
     "../external/entt-3.15.0/single_include"
+    "../external/tinygltf-2.9.6"
 )
 
 # Link libraries
