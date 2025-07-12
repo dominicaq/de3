@@ -11,6 +11,7 @@
 // ECS systems
 #include "components/systems/TransformSystem.h"
 #include "components/systems/GameObjectSystem.h"
+#include "sceneutils/SceneUtils.h"
 
 // Geometry System
 #include "renderer/renderpasses/RenderPassManager.h"
@@ -19,6 +20,7 @@
 // TEMP
 #include "renderer/renderpasses/ForwardPass.h"
 #include "renderer/renderpasses/TrianglePass.h"
+#include "RotationScript.h"
 
 using Clock = std::chrono::high_resolution_clock;
 using TimePoint = std::chrono::time_point<Clock>;
@@ -79,42 +81,65 @@ int main() {
     ctx.renderer = renderer.get();
 
     // Hello Triangle
-    auto entity = registry.create();
     MeshHandle triangleMesh = INVALID_MESH_HANDLE;
     VertexAttributes cubeVertices[] = {
-        // Front face
-        { {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 0 - Bottom left - Red
-        { { 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f} },  // 1 - Bottom right - Green
-        { { 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f} },  // 2 - Top right - Blue
-        { {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f} },  // 3 - Top left - Yellow
+        // Front face - Red (Z = +0.5)
+        { {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 0
+        { { 0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 1
+        { { 0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 2
+        { {-0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 3
 
-        // Back face
-        { {-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f} },  // 4 - Bottom left - Magenta
-        { { 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f} },  // 5 - Bottom right - Cyan
-        { { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f} },  // 6 - Top right - White
-        { {-0.5f,  0.5f, -0.5f}, {0.5f, 0.5f, 0.5f} }   // 7 - Top left - Gray
+        // Back face - Green (Z = -0.5)
+        { { 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f} },  // 4
+        { {-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f} },  // 5
+        { {-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f, 0.0f} },  // 6
+        { { 0.5f,  0.5f, -0.5f}, {0.0f, 1.0f, 0.0f} },  // 7
+
+        // Left face - Blue (X = -0.5)
+        { {-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, 1.0f} },  // 8
+        { {-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f, 1.0f} },  // 9
+        { {-0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f} },  // 10
+        { {-0.5f,  0.5f, -0.5f}, {0.0f, 0.0f, 1.0f} },  // 11
+
+        // Right face - Yellow (X = +0.5)
+        { { 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 0.0f} },  // 12
+        { { 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 0.0f} },  // 13
+        { { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 0.0f} },  // 14
+        { { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f} },  // 15
+
+        // Top face - Magenta (Y = +0.5)
+        { {-0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 1.0f} },  // 16
+        { { 0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 1.0f} },  // 17
+        { { 0.5f,  0.5f, -0.5f}, {1.0f, 0.0f, 1.0f} },  // 18
+        { {-0.5f,  0.5f, -0.5f}, {1.0f, 0.0f, 1.0f} },  // 19
+
+        // Bottom face - Cyan (Y = -0.5)
+        { {-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f} },  // 20
+        { { 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f} },  // 21
+        { { 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 1.0f} },  // 22
+        { {-0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 1.0f} }   // 23
     };
 
     uint32_t cubeIndices[] = {
-        // Front face
-        0, 1, 2,  2, 3, 0,
-        // Back face
-        4, 6, 5,  6, 4, 7,
-        // Left face
-        4, 0, 3,  3, 7, 4,
-        // Right face
-        1, 5, 6,  6, 2, 1,
-        // Top face
-        3, 2, 6,  6, 7, 3,
-        // Bottom face
-        4, 5, 1,  1, 0, 4
+        // Front face (Red)
+        0, 1, 2,   2, 3, 0,
+        // Back face (Green)
+        4, 5, 6,   6, 7, 4,
+        // Left face (Blue)
+        8, 9, 10,   10, 11, 8,
+        // Right face (Yellow)
+        12, 13, 14,   14, 15, 12,
+        // Top face (Magenta)
+        16, 17, 18,   18, 19, 16,
+        // Bottom face (Cyan)
+        20, 21, 22,   22, 23, 20
     };
 
     // Create a mesh on the CPU (this wont be done by hand in the future)
     CPUMesh triCPUdata;
     triCPUdata.vertices = cubeVertices;
     triCPUdata.indices = cubeIndices;
-    triCPUdata.vertexCount = 8;
+    triCPUdata.vertexCount = 24;
     triCPUdata.indexCount = 36;
     triangleMesh = geometryManager->CreateMesh(triCPUdata);
     if (triangleMesh == INVALID_MESH_HANDLE) {
@@ -122,6 +147,16 @@ int main() {
     }
 
     printf("Created triangle mesh with handle %u\n", triangleMesh);
+    // --------------------- Temp GameObject ---------------------
+    entt::entity temp_entity = registry.create();
+    SceneData temp_saveData;
+    temp_saveData.name = "Ground Plane";
+    temp_saveData.position = glm::vec3(0.0f, 0.0f, -2.0f);
+    temp_saveData.eulerAngles = glm::vec3(0.0f, 45.0f, 0.0f);
+    temp_saveData.scale = glm::vec3(1.0f, 1.0f, 1.0f);
+    GameObject* tempObject = SceneUtils::addGameObjectComponent(registry, temp_entity, temp_saveData);
+    tempObject->addScript<RotationScript>();
+    // TODO: assign meshIndex to the entity
     // END OF TEMP
 
     GameObjectSystem gameObjectSystem(ctx.registry);

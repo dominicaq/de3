@@ -1,15 +1,26 @@
 #pragma once
 
 #include "RenderPass.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <entt/entt.hpp>
+
+// Constant buffer structure for GPU
+struct MVPConstants {
+    glm::mat4 mvp;
+    // Add padding if needed for 256-byte alignment
+};
 
 class ForwardPass : public RenderPass {
 public:
     ~ForwardPass() = default;
 
     virtual bool Initialize(ID3D12Device* device) override {
+        m_device = device;
         CompileShaders();
         CreateRootSignature(device);
         CreatePipelineState(device);
+        CreateConstantBuffer(device);
         return true;
     }
 
@@ -35,11 +46,11 @@ public:
         // Bind vertex and index buffers
         ctx.geometryManager->BindVertexIndexBuffers(cmdList);
 
-        // TODO: Set per-frame constants (view/projection matrices, lighting, etc.)
-        // d3dCmdList->SetGraphicsRootConstantBufferView(0, frameConstantBuffer);
+        // Update and bind MVP matrix
+        UpdateMVPMatrix(ctx.registry);
+        d3dCmdList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
 
-        // TODO: TEMP
-        // 1 = first handle
+        // Draw mesh with index 1
         DrawMesh(cmdList, ctx.geometryManager, 1);
     }
 
@@ -48,9 +59,16 @@ public:
 private:
     Shader m_vertexShader;
     Shader m_pixelShader;
+    ComPtr<ID3D12Device> m_device;
+    ComPtr<ID3D12Resource> m_constantBuffer;
+    void* m_constantBufferData = nullptr;
 
     void CompileShaders() {
         std::string vertexShaderSource = R"(
+            cbuffer MVPBuffer : register(b0) {
+                row_major float4x4 mvp;
+            };
+
             struct VSInput {
                 float3 position : POSITION;
                 float3 color : COLOR;
@@ -63,15 +81,6 @@ private:
 
             VSOutput VSMain(VSInput input) {
                 VSOutput output;
-
-                // Hardcoded MVP matrix for basic triangle
-                float4x4 mvp = {
-                    1.0f,  0.0f,  0.0f,  0.0f,
-                    0.0f,  1.0f,  0.0f,  0.0f,
-                    0.0f,  0.0f,  0.75f, -2.25f,
-                    0.0f,  0.0f,  1.0f,  3.0f
-                };
-
                 output.position = mul(float4(input.position, 1.0), mvp);
                 output.color = input.color;
                 return output;
@@ -85,7 +94,6 @@ private:
             };
 
             float4 PSMain(VSOutput input) : SV_TARGET {
-                // Use vertex color
                 return float4(input.color, 1.0);
             }
         )";
@@ -104,10 +112,16 @@ private:
     }
 
     void CreateRootSignature(ID3D12Device* device) {
-        // Simple root signature with no parameters
+        // Root parameter for MVP constant buffer
+        D3D12_ROOT_PARAMETER rootParam = {};
+        rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+        rootParam.Descriptor.ShaderRegister = 0;
+        rootParam.Descriptor.RegisterSpace = 0;
+        rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+
         D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
-        rootSigDesc.NumParameters = 0;
-        rootSigDesc.pParameters = nullptr;
+        rootSigDesc.NumParameters = 1;
+        rootSigDesc.pParameters = &rootParam;
         rootSigDesc.NumStaticSamplers = 0;
         rootSigDesc.pStaticSamplers = nullptr;
         rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -131,6 +145,76 @@ private:
         ));
     }
 
+    void CreateConstantBuffer(ID3D12Device* device) {
+        // Create constant buffer (256-byte aligned)
+        UINT bufferSize = (sizeof(MVPConstants) + 255) & ~255;
+
+        D3D12_HEAP_PROPERTIES heapProps = {};
+        heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+        heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+        heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+        D3D12_RESOURCE_DESC resourceDesc = {};
+        resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        resourceDesc.Width = bufferSize;
+        resourceDesc.Height = 1;
+        resourceDesc.DepthOrArraySize = 1;
+        resourceDesc.MipLevels = 1;
+        resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
+        resourceDesc.SampleDesc.Count = 1;
+        resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+        ThrowIfFailed(device->CreateCommittedResource(
+            &heapProps,
+            D3D12_HEAP_FLAG_NONE,
+            &resourceDesc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_constantBuffer)
+        ));
+
+        // Map the constant buffer
+        D3D12_RANGE readRange = { 0, 0 };
+        ThrowIfFailed(m_constantBuffer->Map(0, &readRange, &m_constantBufferData));
+    }
+
+    void UpdateMVPMatrix(entt::registry& registry) {
+        // Create view and projection matrices
+        glm::mat4 view = glm::lookAt(
+            glm::vec3(0.0f, 1.0f, 2.0f),   // Camera position - diagonal view to see cube properly
+            glm::vec3(0.0f, 0.0f, 0.0f),   // Look at origin
+            glm::vec3(0.0f, 1.0f, 0.0f)    // Up vector
+        );
+
+        // Use proper DX12 projection (0-1 depth range)
+        glm::mat4 projection = glm::perspectiveFov(
+            glm::radians(45.0f),    // 45 degree FOV
+            1920.0f, 1080.0f,       // Screen dimensions
+            0.1f,                   // Near plane
+            100.0f                  // Far plane
+        );
+
+        // Find the entity with mesh index 1 (you might want to store this mapping)
+        // For now, get the first entity with a ModelMatrix component
+        glm::mat4 model = glm::mat4(1.0f);
+
+        auto view_entities = registry.view<ModelMatrix>();
+        if (!view_entities.empty()) {
+            auto entity = view_entities.front();
+            const auto& modelMatrix = registry.get<ModelMatrix>(entity);
+            model = modelMatrix.matrix;
+        }
+
+        // Calculate MVP matrix
+        glm::mat4 mvp = projection * view * model;
+
+        // Update constant buffer
+        MVPConstants constants;
+        constants.mvp = mvp;
+
+        memcpy(m_constantBufferData, &constants, sizeof(MVPConstants));
+    }
+
     void CreatePipelineState(ID3D12Device* device) {
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
@@ -143,7 +227,7 @@ private:
 
         // Rasterizer state
         psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         psoDesc.RasterizerState.FrontCounterClockwise = FALSE;
         psoDesc.RasterizerState.DepthBias = 0;
         psoDesc.RasterizerState.DepthBiasClamp = 0.0f;
