@@ -3,6 +3,7 @@
 #include "dx12/core/DX12Common.h"
 #include "renderer/Renderer.h"
 #include "resources/GeometryManager.h"
+#include "resources/UniformManager.h"
 #include <entt/entt.hpp>
 
 struct FrameData {
@@ -19,6 +20,7 @@ struct RenderContext {
 
     entt::registry& registry;
     GeometryManager* geometryManager;
+    UniformManager* uniformManager = nullptr;
     // TextureManager* textureManager;
     // MaterialManager* materialManager;
     // ShaderManager* shaderManager;

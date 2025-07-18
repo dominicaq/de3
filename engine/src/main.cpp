@@ -16,6 +16,7 @@
 // Geometry System
 #include "renderer/renderpasses/RenderPassManager.h"
 #include "resources/GeometryManager.h"
+#include "resources/UniformManager.h" // Add UniformManager header
 
 // TEMP
 #include "renderer/renderpasses/ForwardPass.h"
@@ -36,7 +37,6 @@ int main() {
 
     std::unique_ptr<Renderer> renderer;
     try {
-        // Initialize DirectX 12
         renderer = std::make_unique<Renderer>(window.GetHandle(), g_config);
     }
     catch (const std::runtime_error& e) {
@@ -45,7 +45,7 @@ int main() {
         return -1;
     }
 
-    // Setup resize callback - SwapChain will handle GPU synchronization
+    // Setup resize callback: SwapChain will handle GPU synchronization
     window.SetResizeCallback([&renderer](UINT width, UINT height) {
         if (renderer) {
             renderer->OnReconfigure(width, height);
@@ -56,32 +56,46 @@ int main() {
 
     // TEMP CODE
     entt::registry registry;
-
-    // Geometry System
     DX12Device* device = renderer->GetDevice();
-    RenderPassManager passManager;
-    passManager.AddPass(std::make_unique<ForwardPass>());
-    // passManager.AddPass(std::make_unique<TrianglePass>());
-    if (!passManager.InitializeAllPasses(device->GetD3D12Device())) {
-        throw std::runtime_error("Failed to init RenderPasses");
-    }
 
-    // Configure
     std::unique_ptr<GeometryManager> geometryManager = std::make_unique<GeometryManager>(device->GetAllocator());
     GeometryManager::Config geoConfig;
-    geoConfig.vertexBufferSize = 128 * 1024 * 1024;  // 128MB - adjust as needed
+    geoConfig.vertexBufferSize = 128 * 1024 * 1024;  // 128MB
     geoConfig.indexBufferSize = 32 * 1024 * 1024;    // 32MB
     geoConfig.uploadHeapSize = 8 * 1024 * 1024;      // 8MB
     geoConfig.maxUploadsPerFrame = 8;
     geometryManager->SetConfig(geoConfig);
 
-    // Now create context with geometry manager
+    std::unique_ptr<UniformManager> uniformManager = std::make_unique<UniformManager>(
+        device->GetAllocator(),
+        device->GetD3D12Device()
+    );
+
+    // Per frame config
+    UniformManager::Config uniformConfig;
+    uniformConfig.frameBufferSize = 4 * 1024 * 1024;
+    uniformConfig.maxDescriptors = 2000;
+    uniformConfig.frameCount = 3;
+
+    if (!uniformManager->Initialize(uniformConfig)) {
+        std::cerr << "Failed to initialize UniformManager!" << std::endl;
+        return -1;
+    }
+
+    // Render Pass System
+    RenderPassManager passManager;
+    passManager.AddPass(std::make_unique<ForwardPass>());
+    if (!passManager.InitializeAllPasses(device->GetD3D12Device())) {
+        throw std::runtime_error("Failed to init RenderPasses");
+    }
+
+    // Create render context with both managers
     RenderContext ctx {0.0f, registry};
     ctx.geometryManager = geometryManager.get();
+    ctx.uniformManager = uniformManager.get();  // Add uniform manager to context
     ctx.renderer = renderer.get();
 
-    // Hello Triangle
-    MeshHandle triangleMesh = INVALID_MESH_HANDLE;
+    MeshHandle cubeMesh = INVALID_MESH_HANDLE;
     VertexAttributes cubeVertices[] = {
         // Front face - Red (Z = +0.5)
         { {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 0
@@ -121,18 +135,12 @@ int main() {
     };
 
     uint32_t cubeIndices[] = {
-        // Front face (Red)
-        0, 1, 2,   2, 3, 0,
-        // Back face (Green)
-        4, 5, 6,   6, 7, 4,
-        // Left face (Blue)
-        8, 9, 10,   10, 11, 8,
-        // Right face (Yellow)
-        12, 13, 14,   14, 15, 12,
-        // Top face (Magenta)
-        16, 17, 18,   18, 19, 16,
-        // Bottom face (Cyan)
-        20, 21, 22,   22, 23, 20
+        0, 2, 1,   0, 3, 2,
+        4, 6, 5,   4, 7, 6,
+        8, 10, 9,   8, 11, 10,
+        12, 14, 13,   12, 15, 14,
+        16, 18, 17,   16, 19, 18,
+        20, 22, 21,   20, 23, 22
     };
 
     // Create a mesh on the CPU (this wont be done by hand in the future)
@@ -141,12 +149,13 @@ int main() {
     triCPUdata.indices = cubeIndices;
     triCPUdata.vertexCount = 24;
     triCPUdata.indexCount = 36;
-    triangleMesh = geometryManager->CreateMesh(triCPUdata);
-    if (triangleMesh == INVALID_MESH_HANDLE) {
+    cubeMesh = geometryManager->CreateMesh(triCPUdata);
+    if (cubeMesh == INVALID_MESH_HANDLE) {
         throw std::runtime_error("Failed to create triangle mesh");
     }
 
-    printf("Created triangle mesh with handle %u\n", triangleMesh);
+    printf("Created triangle mesh with handle %u\n", cubeMesh);
+
     // --------------------- Temp GameObject ---------------------
     entt::entity temp_entity = registry.create();
     SceneData temp_saveData;
@@ -167,14 +176,19 @@ int main() {
     FPSUtils::FPSUtils fpsUtils;
     int frameCount = 0;
     float debugPrintTimer = 0;
+
     while (!window.ShouldClose()) {
         TimePoint frameStart = Clock::now();
         window.ProcessEvents();
 
-        // Render loop
         CommandList* cmdList = renderer->BeginFrame();
+
         geometryManager->BeginFrame(frameCount, cmdList);
+        uniformManager->BeginFrame(frameCount);
+
         passManager.ExecuteAllPasses(cmdList, ctx);
+
+        uniformManager->EndFrame();
         renderer->EndFrame(g_config);
 
         if (g_config.cappedFPS) {
@@ -203,12 +217,19 @@ int main() {
         debugPrintTimer += ctx.deltaTime;
         if (debugPrintTimer >= 9.0f) {
             geometryManager->PrintDebugInfo();
+            uniformManager->PrintStats();
             debugPrintTimer = 0.0f;
         }
 #endif
     }
 
+    // Cleanup
     renderer->FlushGPU();
+
+    // Shutdown managers before renderer
+    uniformManager.reset();
+    geometryManager.reset();
+
     std::cout << "Engine shutdown complete." << std::endl;
     return 0;
 }

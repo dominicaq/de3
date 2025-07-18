@@ -5,22 +5,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <entt/entt.hpp>
 
-// Constant buffer structure for GPU
-struct MVPConstants {
-    glm::mat4 mvp;
-    // Add padding if needed for 256-byte alignment
-};
-
 class ForwardPass : public RenderPass {
 public:
     ~ForwardPass() = default;
 
     virtual bool Initialize(ID3D12Device* device) override {
-        m_device = device;
         CompileShaders();
         CreateRootSignature(device);
         CreatePipelineState(device);
-        CreateConstantBuffer(device);
         return true;
     }
 
@@ -28,9 +20,19 @@ public:
         ctx.renderer->SetupRenderTarget(cmdList);
         ctx.renderer->SetupViewportAndScissor(cmdList);
 
+        // Get uniform manager from context
+        if (!ctx.uniformManager) {
+            printf("ForwardPass: UniformManager not available in context\n");
+            return;
+        }
+
+        // Bind descriptor heap for constant buffers
+        ctx.uniformManager->BindDescriptorHeap(cmdList->GetCommandList());
+
         // Standard clear color (can be made configurable)
         float clearColor[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
         ctx.renderer->ClearBackBuffer(cmdList, clearColor);
+        ctx.renderer->ClearDepthBuffer(cmdList, 1.0f, 0);
 
         ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
         if (!d3dCmdList) {
@@ -46,9 +48,43 @@ public:
         // Bind vertex and index buffers
         ctx.geometryManager->BindVertexIndexBuffers(cmdList);
 
-        // Update and bind MVP matrix
-        UpdateMVPMatrix(ctx.registry);
-        d3dCmdList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress());
+        struct MVPConstants {
+            glm::mat4 mvp;
+        } mvpData;
+
+        // Hardcoded camera values
+        glm::vec3 cameraPos = glm::vec3(0.0f, 1.0f, 2.0f);
+        glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
+        glm::vec3 upVector = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        glm::mat4 view = glm::lookAt(cameraPos, lookAt, upVector);
+
+        // Use proper DX12 projection (0-1 depth range) with actual window dimensions
+        float aspect = (float)ctx.renderer->GetBackBufferWidth() / (float)ctx.renderer->GetBackBufferHeight();
+        glm::mat4 projection = glm::perspective(
+            glm::radians(45.0f),
+            aspect,
+            0.1f,
+            100.0f
+        );
+
+        // Get model matrix from entity registry
+        glm::mat4 model = glm::mat4(1.0f);
+        auto view_entities = ctx.registry.view<ModelMatrix>();
+        if (!view_entities.empty()) {
+            auto entity = view_entities.front();
+            const auto& modelMatrix = ctx.registry.get<ModelMatrix>(entity);
+            model = modelMatrix.matrix;
+        }
+
+        mvpData.mvp = projection * view * model;
+
+        auto mvpUniform = ctx.uniformManager->UploadUniform(&mvpData, sizeof(mvpData));
+        if (!mvpUniform.IsValid()) {
+            printf("ForwardPass: Failed to upload MVP constants\n");
+            return;
+        }
+        ctx.uniformManager->SetGraphicsRootDescriptorTable(d3dCmdList, 0, mvpUniform);
 
         // Draw mesh with index 1
         DrawMesh(cmdList, ctx.geometryManager, 1);
@@ -59,9 +95,6 @@ public:
 private:
     Shader m_vertexShader;
     Shader m_pixelShader;
-    ComPtr<ID3D12Device> m_device;
-    ComPtr<ID3D12Resource> m_constantBuffer;
-    void* m_constantBufferData = nullptr;
 
     void CompileShaders() {
         std::string vertexShaderSource = R"(
@@ -112,16 +145,26 @@ private:
     }
 
     void CreateRootSignature(ID3D12Device* device) {
-        // Root parameter for MVP constant buffer
-        D3D12_ROOT_PARAMETER rootParam = {};
-        rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        rootParam.Descriptor.ShaderRegister = 0;
-        rootParam.Descriptor.RegisterSpace = 0;
-        rootParam.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        // Single descriptor table for MVP constant buffer
+        D3D12_ROOT_PARAMETER rootParameter = {};
 
+        // MVP constants (b0)
+        D3D12_DESCRIPTOR_RANGE mvpRange = {};
+        mvpRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        mvpRange.NumDescriptors = 1;
+        mvpRange.BaseShaderRegister = 0;
+        mvpRange.RegisterSpace = 0;
+        mvpRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        rootParameter.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        rootParameter.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
+        rootParameter.DescriptorTable.NumDescriptorRanges = 1;
+        rootParameter.DescriptorTable.pDescriptorRanges = &mvpRange;
+
+        // Create root signature
         D3D12_ROOT_SIGNATURE_DESC rootSigDesc = {};
-        rootSigDesc.NumParameters = 1;
-        rootSigDesc.pParameters = &rootParam;
+        rootSigDesc.NumParameters = 1; // Single MVP constant buffer table
+        rootSigDesc.pParameters = &rootParameter;
         rootSigDesc.NumStaticSamplers = 0;
         rootSigDesc.pStaticSamplers = nullptr;
         rootSigDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
@@ -145,76 +188,6 @@ private:
         ));
     }
 
-    void CreateConstantBuffer(ID3D12Device* device) {
-        // Create constant buffer (256-byte aligned)
-        UINT bufferSize = (sizeof(MVPConstants) + 255) & ~255;
-
-        D3D12_HEAP_PROPERTIES heapProps = {};
-        heapProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-        heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
-        heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-
-        D3D12_RESOURCE_DESC resourceDesc = {};
-        resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        resourceDesc.Width = bufferSize;
-        resourceDesc.Height = 1;
-        resourceDesc.DepthOrArraySize = 1;
-        resourceDesc.MipLevels = 1;
-        resourceDesc.Format = DXGI_FORMAT_UNKNOWN;
-        resourceDesc.SampleDesc.Count = 1;
-        resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-        ThrowIfFailed(device->CreateCommittedResource(
-            &heapProps,
-            D3D12_HEAP_FLAG_NONE,
-            &resourceDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&m_constantBuffer)
-        ));
-
-        // Map the constant buffer
-        D3D12_RANGE readRange = { 0, 0 };
-        ThrowIfFailed(m_constantBuffer->Map(0, &readRange, &m_constantBufferData));
-    }
-
-    void UpdateMVPMatrix(entt::registry& registry) {
-        // Create view and projection matrices
-        glm::mat4 view = glm::lookAt(
-            glm::vec3(0.0f, 1.0f, 2.0f),   // Camera position - diagonal view to see cube properly
-            glm::vec3(0.0f, 0.0f, 0.0f),   // Look at origin
-            glm::vec3(0.0f, 1.0f, 0.0f)    // Up vector
-        );
-
-        // Use proper DX12 projection (0-1 depth range)
-        glm::mat4 projection = glm::perspectiveFov(
-            glm::radians(45.0f),    // 45 degree FOV
-            1920.0f, 1080.0f,       // Screen dimensions
-            0.1f,                   // Near plane
-            100.0f                  // Far plane
-        );
-
-        // Find the entity with mesh index 1 (you might want to store this mapping)
-        // For now, get the first entity with a ModelMatrix component
-        glm::mat4 model = glm::mat4(1.0f);
-
-        auto view_entities = registry.view<ModelMatrix>();
-        if (!view_entities.empty()) {
-            auto entity = view_entities.front();
-            const auto& modelMatrix = registry.get<ModelMatrix>(entity);
-            model = modelMatrix.matrix;
-        }
-
-        // Calculate MVP matrix
-        glm::mat4 mvp = projection * view * model;
-
-        // Update constant buffer
-        MVPConstants constants;
-        constants.mvp = mvp;
-
-        memcpy(m_constantBufferData, &constants, sizeof(MVPConstants));
-    }
-
     void CreatePipelineState(ID3D12Device* device) {
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
@@ -225,9 +198,9 @@ private:
         psoDesc.PS.pShaderBytecode = m_pixelShader.GetShaderBlob()->GetBufferPointer();
         psoDesc.PS.BytecodeLength = m_pixelShader.GetShaderBlob()->GetBufferSize();
 
-        // Rasterizer state
+        // Rasterizer state - enabled back-face culling for better depth testing
         psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;  // Enable back-face culling
         psoDesc.RasterizerState.FrontCounterClockwise = FALSE;
         psoDesc.RasterizerState.DepthBias = 0;
         psoDesc.RasterizerState.DepthBiasClamp = 0.0f;
@@ -252,11 +225,11 @@ private:
             psoDesc.BlendState.RenderTarget[i] = defaultRenderTargetBlendDesc;
         }
 
-        // Depth stencil state (disabled for simplicity)
-        psoDesc.DepthStencilState.DepthEnable = FALSE;
-        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        // **DEPTH STENCIL STATE - ENABLED FOR DEPTH TESTING**
+        psoDesc.DepthStencilState.DepthEnable = TRUE;                           // Enable depth testing
+        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;  // Allow depth writes
+        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;       // Standard depth function (closer objects pass)
+        psoDesc.DepthStencilState.StencilEnable = FALSE;                        // Disable stencil testing for now
         psoDesc.DepthStencilState.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
         psoDesc.DepthStencilState.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
         const D3D12_DEPTH_STENCILOP_DESC defaultStencilOp = {
@@ -280,7 +253,7 @@ private:
         // Render target formats
         psoDesc.NumRenderTargets = 1;
         psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-        psoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN; // No depth buffer for now
+        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;  // **SPECIFY DEPTH BUFFER FORMAT**
 
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.SampleDesc.Count = 1;

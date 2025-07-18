@@ -38,6 +38,11 @@ Renderer::Renderer(HWND hwnd, const EngineConfig& config) {
         throw std::runtime_error("Failed to initialize frame resources");
     }
 
+    // Add depth buffer creation
+    if (!CreateDepthBuffer()) {
+        throw std::runtime_error("Failed to create depth buffer");
+    }
+
     // Create shared command list
     m_commandList = std::make_unique<CommandList>();
     if (!m_commandList->Initialize(device,
@@ -60,6 +65,7 @@ Renderer::~Renderer() {
 
     printf("Releasing back buffer RTVs...\n");
     ReleaseBackBufferRTVs();
+    ReleaseDepthBuffer();
 
     printf("Rleasing GPU Resources...\n");
     m_frameResources.clear();
@@ -117,11 +123,13 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
         return;
     }
 
-    // Wait for all frames before reconfiguring
     WaitForAllFrames();
-    FlushGPU();
 
+    // Clear all data
+    FlushGPU();
     ReleaseBackBufferRTVs();
+    ReleaseDepthBuffer();
+
     if (!m_swapChain->Reconfigure(width, height, bufferCount)) {
         printf("Failed to reconfigure swap chain\n");
         return;
@@ -130,6 +138,12 @@ void Renderer::OnReconfigure(UINT width, UINT height, UINT bufferCount) {
     // Recreate RTVs for new back buffers
     if (!CreateBackBufferRTVs()) {
         printf("Failed to recreate back buffer RTVs after reconfigure\n");
+        return;
+    }
+
+    // Recreate depth buffer for new dimensions
+    if (!CreateDepthBuffer()) {
+        printf("Failed to recreate depth buffer after reconfigure\n");
         return;
     }
 
@@ -279,7 +293,7 @@ void Renderer::SetupRenderTarget(CommandList* cmdList) {
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtv = GetCurrentBackBufferRTV();
-    cmdList->GetCommandList()->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+    cmdList->GetCommandList()->OMSetRenderTargets(1, &rtv, FALSE, &m_depthStencilView);
 }
 
 void Renderer::SetupViewportAndScissor(CommandList* cmdList) {
@@ -419,4 +433,107 @@ void Renderer::FlushGPU() {
         ThrowIfFailed(frame.frameFence->SetEventOnCompletion(flushFenceValue, frame.fenceEvent));
         WaitForSingleObject(frame.fenceEvent, INFINITE);
     }
+}
+
+bool Renderer::CreateDepthBuffer() {
+    ID3D12Device* device = m_device->GetD3D12Device();
+    UINT width = m_swapChain->GetWidth();
+    UINT height = m_swapChain->GetHeight();
+
+    printf("Creating depth buffer: %dx%d\n", width, height);
+
+    // Create DSV descriptor heap
+    D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+    dsvHeapDesc.NumDescriptors = 1;
+    dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+    HRESULT hr = device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvDescriptorHeap));
+    if (FAILED(hr)) {
+        printf("Failed to create DSV descriptor heap: 0x%08X\n", hr);
+        return false;
+    }
+
+    // Create depth stencil buffer
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+    heapProps.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+    heapProps.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+
+    D3D12_RESOURCE_DESC depthDesc = {};
+    depthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    depthDesc.Alignment = 0;
+    depthDesc.Width = width;
+    depthDesc.Height = height;
+    depthDesc.DepthOrArraySize = 1;
+    depthDesc.MipLevels = 1;
+    depthDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    depthDesc.SampleDesc.Count = 1;
+    depthDesc.SampleDesc.Quality = 0;
+    depthDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+    depthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+    D3D12_CLEAR_VALUE clearValue = {};
+    clearValue.Format = DXGI_FORMAT_D32_FLOAT;
+    clearValue.DepthStencil.Depth = 1.0f;
+    clearValue.DepthStencil.Stencil = 0;
+
+    hr = device->CreateCommittedResource(
+        &heapProps,
+        D3D12_HEAP_FLAG_NONE,
+        &depthDesc,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        &clearValue,
+        IID_PPV_ARGS(&m_depthStencilBuffer)
+    );
+
+    if (FAILED(hr)) {
+        printf("Failed to create depth stencil buffer: 0x%08X\n", hr);
+        return false;
+    }
+
+    // Create depth stencil view
+    D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+    m_depthStencilView = m_dsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+    device->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsvDesc, m_depthStencilView);
+
+    printf("Depth buffer created successfully\n");
+    return true;
+}
+
+void Renderer::ReleaseDepthBuffer() {
+    m_depthStencilBuffer.Reset();
+    m_dsvDescriptorHeap.Reset();
+    m_depthStencilView = {};
+}
+
+void Renderer::ClearDepthBuffer(CommandList* cmdList, float depth, UINT8 stencil) {
+    if (!cmdList) {
+        printf("ClearDepthBuffer: Invalid command list\n");
+        return;
+    }
+
+    ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
+    if (!d3dCmdList) {
+        printf("ClearDepthBuffer: Failed to get D3D12 command list\n");
+        return;
+    }
+
+    if (!m_depthStencilView.ptr) {
+        printf("ClearDepthBuffer: No depth stencil view available\n");
+        return;
+    }
+
+    d3dCmdList->ClearDepthStencilView(
+        m_depthStencilView,
+        D3D12_CLEAR_FLAG_DEPTH,
+        depth,
+        stencil,
+        0,
+        nullptr
+    );
 }
