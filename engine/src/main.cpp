@@ -6,6 +6,7 @@
 // Engine includes
 #include "renderer/Renderer.h"
 #include "renderer/FPSUtils.h"
+#include "InputManager.h"
 #include <entt/entt.hpp>
 
 // ECS systems
@@ -22,6 +23,7 @@
 #include "renderer/renderpasses/ForwardPass.h"
 #include "renderer/renderpasses/TrianglePass.h"
 #include "RotationScript.h"
+#include "FreeCamera.h"
 
 using Clock = std::chrono::high_resolution_clock;
 using TimePoint = std::chrono::time_point<Clock>;
@@ -34,6 +36,7 @@ int main() {
         std::cerr << "Failed to create window!" << std::endl;
         return -1;
     }
+    InputManager::getInstance().init(window.GetHandle());
 
     std::unique_ptr<Renderer> renderer;
     try {
@@ -54,8 +57,6 @@ int main() {
 
     PrintConfigStats(g_config);
 
-    // TEMP CODE
-    entt::registry registry;
     DX12Device* device = renderer->GetDevice();
 
     std::unique_ptr<GeometryManager> geometryManager = std::make_unique<GeometryManager>(device->GetAllocator());
@@ -90,10 +91,12 @@ int main() {
     }
 
     // Create render context with both managers
-    RenderContext ctx {registry};
-    ctx.geometryManager = geometryManager.get();
-    ctx.uniformManager = uniformManager.get();  // Add uniform manager to context
-    ctx.renderer = renderer.get();
+    // TEMP CODE
+    entt::registry registry;
+    RenderContext renderCtx {registry};
+    renderCtx.geometryManager = geometryManager.get();
+    renderCtx.uniformManager = uniformManager.get();  // Add uniform manager to context
+    renderCtx.renderer = renderer.get();
 
     VertexAttributes cubeVertices[] = {
         // Front face - Red (Z = +0.5)
@@ -156,7 +159,7 @@ int main() {
 
     printf("Created triangle mesh with handle %u\n", cubeMesh);
 
-    // --------------------- Temp GameObject ---------------------
+    // =========================================================================
     entt::entity temp_entity = registry.create();
     SceneData temp_saveData;
     temp_saveData.name = "Ground Plane";
@@ -175,15 +178,15 @@ int main() {
     cameraEntityData.eulerAngles = glm::vec3(0.0f, 0.0f, 0.0f);
     cameraEntityData.scale = glm::vec3(1.0f, 1.0f, 1.0f);
     GameObject* cameraObject = SceneUtils::addGameObjectComponent(registry, cameraEntity, cameraEntityData);
+    cameraObject->addScript<FreeCamera>();
+    cameraObject->addComponent<Camera>(cameraEntity, registry);
 
-    // Attach camera component
-    Camera primaryCamera(cameraEntity, registry);
-    ctx.targetCamera = &primaryCamera;
+    renderCtx.targetCamera = &cameraObject->getComponent<Camera>();
 
     // END OF TEMP
 
-    GameObjectSystem gameObjectSystem(ctx.registry);
-    TransformSystem transformSystem(ctx.registry);
+    GameObjectSystem gameObjectSystem(renderCtx.registry);
+    TransformSystem transformSystem(renderCtx.registry);
 
     // Game loop
     TimePoint lastTime = Clock::now();
@@ -194,17 +197,18 @@ int main() {
     while (!window.ShouldClose()) {
         TimePoint frameStart = Clock::now();
         window.ProcessEvents();
+        Input.update();
 
         CommandList* cmdList = renderer->BeginFrame();
 
         geometryManager->BeginFrame(frameCount, cmdList);
         uniformManager->BeginFrame(frameCount);
 
-        ctx.targetCamera->setAspectRatio(
-            (float)ctx.renderer->GetBackBufferWidth(),
-            (float)ctx.renderer->GetBackBufferHeight()
+        renderCtx.targetCamera->setAspectRatio(
+            (float)renderCtx.renderer->GetBackBufferWidth(),
+            (float)renderCtx.renderer->GetBackBufferHeight()
         );
-        passManager.ExecuteAllPasses(cmdList, ctx);
+        passManager.ExecuteAllPasses(cmdList, renderCtx);
 
         uniformManager->EndFrame();
         renderer->EndFrame(g_config);
@@ -215,11 +219,11 @@ int main() {
 
         TimePoint frameEnd = Clock::now();
         std::chrono::duration<float> delta = frameEnd - frameStart;
-        ctx.deltaTime = delta.count();
+        renderCtx.deltaTime = delta.count();
         frameCount++;
 
         // ECS updates
-        gameObjectSystem.updateAll(0, ctx.deltaTime);
+        gameObjectSystem.updateAll(0, renderCtx.deltaTime);
         transformSystem.updateTransformComponents();
 
 #ifdef _DEBUG
@@ -232,7 +236,7 @@ int main() {
             std::cout << "FPS: " << fps << std::endl;
         }
 
-        debugPrintTimer += ctx.deltaTime;
+        debugPrintTimer += renderCtx.deltaTime;
         if (debugPrintTimer >= 9.0f) {
             geometryManager->PrintDebugInfo();
             uniformManager->PrintStats();
