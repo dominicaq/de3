@@ -25,7 +25,8 @@ private:
     entt::registry& m_registry;
 
 public:
-    // Constructor
+    bool disabled = false;
+
     Camera(entt::entity cameraEntity, entt::registry& registry)
         : m_entity(cameraEntity), m_registry(registry) {}
 

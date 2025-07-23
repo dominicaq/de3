@@ -16,7 +16,7 @@
 // Geometry System
 #include "renderer/renderpasses/RenderPassManager.h"
 #include "resources/GeometryManager.h"
-#include "resources/UniformManager.h" // Add UniformManager header
+#include "resources/UniformManager.h"
 
 // TEMP
 #include "renderer/renderpasses/ForwardPass.h"
@@ -90,12 +90,11 @@ int main() {
     }
 
     // Create render context with both managers
-    RenderContext ctx {0.0f, registry};
+    RenderContext ctx {registry};
     ctx.geometryManager = geometryManager.get();
     ctx.uniformManager = uniformManager.get();  // Add uniform manager to context
     ctx.renderer = renderer.get();
 
-    MeshHandle cubeMesh = INVALID_MESH_HANDLE;
     VertexAttributes cubeVertices[] = {
         // Front face - Red (Z = +0.5)
         { {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },  // 0
@@ -149,6 +148,7 @@ int main() {
     triCPUdata.indices = cubeIndices;
     triCPUdata.vertexCount = 24;
     triCPUdata.indexCount = 36;
+    MeshHandle cubeMesh = INVALID_MESH_HANDLE;
     cubeMesh = geometryManager->CreateMesh(triCPUdata);
     if (cubeMesh == INVALID_MESH_HANDLE) {
         throw std::runtime_error("Failed to create triangle mesh");
@@ -165,7 +165,21 @@ int main() {
     temp_saveData.scale = glm::vec3(1.0f, 1.0f, 1.0f);
     GameObject* tempObject = SceneUtils::addGameObjectComponent(registry, temp_entity, temp_saveData);
     tempObject->addScript<RotationScript>();
-    // TODO: assign meshIndex to the entity
+    registry.emplace<MeshHandle>(temp_entity, cubeMesh);
+
+    // =========================================================================
+    entt::entity cameraEntity = registry.create();
+    SceneData cameraEntityData;
+    cameraEntityData.name = "Primary Camera";
+    cameraEntityData.position = glm::vec3(0.0f, 0.0f, 2.0f);
+    cameraEntityData.eulerAngles = glm::vec3(0.0f, 0.0f, 0.0f);
+    cameraEntityData.scale = glm::vec3(1.0f, 1.0f, 1.0f);
+    GameObject* cameraObject = SceneUtils::addGameObjectComponent(registry, cameraEntity, cameraEntityData);
+
+    // Attach camera component
+    Camera primaryCamera(cameraEntity, registry);
+    ctx.targetCamera = &primaryCamera;
+
     // END OF TEMP
 
     GameObjectSystem gameObjectSystem(ctx.registry);
@@ -186,6 +200,10 @@ int main() {
         geometryManager->BeginFrame(frameCount, cmdList);
         uniformManager->BeginFrame(frameCount);
 
+        ctx.targetCamera->setAspectRatio(
+            (float)ctx.renderer->GetBackBufferWidth(),
+            (float)ctx.renderer->GetBackBufferHeight()
+        );
         passManager.ExecuteAllPasses(cmdList, ctx);
 
         uniformManager->EndFrame();

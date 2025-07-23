@@ -4,19 +4,13 @@
 #include "renderer/Renderer.h"
 #include "resources/GeometryManager.h"
 #include "resources/UniformManager.h"
+
+#include <components/Camera.h>
 #include <entt/entt.hpp>
 
-struct FrameData {
-    float deltaTime;
-    // Matrix4 view;
-    // Matrix4 projection;
-    // Matrix4 viewProjection;
-    // Other per-frame data
-};
-
 struct RenderContext {
-    // const FrameData& frameData;
-    float deltaTime;
+    float deltaTime = 0.0f;
+    Camera* targetCamera = nullptr;
 
     entt::registry& registry;
     GeometryManager* geometryManager;
@@ -26,4 +20,6 @@ struct RenderContext {
     // ShaderManager* shaderManager;
 
     Renderer* renderer;
+    explicit RenderContext(entt::registry& reg)
+    : registry(reg) {}
 };

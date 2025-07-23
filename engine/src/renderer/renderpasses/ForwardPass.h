@@ -20,76 +20,54 @@ public:
         ctx.renderer->SetupRenderTarget(cmdList);
         ctx.renderer->SetupViewportAndScissor(cmdList);
 
-        // Get uniform manager from context
         if (!ctx.uniformManager) {
             printf("ForwardPass: UniformManager not available in context\n");
             return;
         }
 
-        // Bind descriptor heap for constant buffers
-        ctx.uniformManager->BindDescriptorHeap(cmdList->GetCommandList());
-
-        // Standard clear color (can be made configurable)
-        float clearColor[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
-        ctx.renderer->ClearBackBuffer(cmdList, clearColor);
-        ctx.renderer->ClearDepthBuffer(cmdList, 1.0f, 0);
-
         ID3D12GraphicsCommandList* d3dCmdList = cmdList->GetCommandList();
+        ctx.uniformManager->BindDescriptorHeap(d3dCmdList);
         if (!d3dCmdList) {
             printf("ForwardPass: Failed to get D3D12 command list\n");
             return;
         }
 
-        // Set pipeline state and root signature
         d3dCmdList->SetPipelineState(m_pipelineState.Get());
         d3dCmdList->SetGraphicsRootSignature(m_rootSignature.Get());
         d3dCmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-        // Bind vertex and index buffers
         ctx.geometryManager->BindVertexIndexBuffers(cmdList);
 
-        struct MVPConstants {
-            glm::mat4 mvp;
-        } mvpData;
+        float clearColor[4] = { 0.1f, 0.1f, 0.1f, 1.0f };
+        ctx.renderer->ClearBackBuffer(cmdList, clearColor);
+        ctx.renderer->ClearDepthBuffer(cmdList, 1.0f, 0);
 
-        // Hardcoded camera values
-        glm::vec3 cameraPos = glm::vec3(0.0f, 1.0f, 2.0f);
-        glm::vec3 lookAt = glm::vec3(0.0f, 0.0f, 0.0f);
-        glm::vec3 upVector = glm::vec3(0.0f, 1.0f, 0.0f);
+        // TODO: Instance rendering
+        // Upload all model matrices to a buffer, then use instanced drawing
 
-        glm::mat4 view = glm::lookAt(cameraPos, lookAt, upVector);
-
-        // Use proper DX12 projection (0-1 depth range) with actual window dimensions
-        float aspect = (float)ctx.renderer->GetBackBufferWidth() / (float)ctx.renderer->GetBackBufferHeight();
-        glm::mat4 projection = glm::perspective(
-            glm::radians(45.0f),
-            aspect,
-            0.1f,
-            100.0f
-        );
-
-        // Get model matrix from entity registry
-        glm::mat4 model = glm::mat4(1.0f);
-        auto view_entities = ctx.registry.view<ModelMatrix>();
-        if (!view_entities.empty()) {
-            auto entity = view_entities.front();
+        glm::mat4 mvp;
+        auto meshView = ctx.registry.view<MeshHandle, ModelMatrix>();
+        for (auto entity : meshView) {
+            const MeshHandle meshHandle = ctx.registry.get<MeshHandle>(entity);
             const auto& modelMatrix = ctx.registry.get<ModelMatrix>(entity);
-            model = modelMatrix.matrix;
+
+            // Compute MVP for this specific entity
+            mvp = ctx.targetCamera->getProjectionMatrix() * ctx.targetCamera->getViewMatrix() * modelMatrix.matrix;
+
+            // Upload MVP for this draw call
+            auto mvpUniform = ctx.uniformManager->UploadUniform(&mvp, sizeof(glm::mat4));
+            if (!mvpUniform.IsValid()) {
+                printf("ForwardPass: Failed to upload MVP constants for entity\n");
+                continue;
+            }
+
+            // Bind MVP uniform for this entity
+            ctx.uniformManager->SetGraphicsRootDescriptorTable(d3dCmdList, 0, mvpUniform);
+
+            // Draw this entity's mesh
+            DrawMesh(cmdList, ctx.geometryManager, meshHandle);
         }
-
-        mvpData.mvp = projection * view * model;
-
-        auto mvpUniform = ctx.uniformManager->UploadUniform(&mvpData, sizeof(mvpData));
-        if (!mvpUniform.IsValid()) {
-            printf("ForwardPass: Failed to upload MVP constants\n");
-            return;
-        }
-        ctx.uniformManager->SetGraphicsRootDescriptorTable(d3dCmdList, 0, mvpUniform);
-
-        // Draw mesh with index 1
-        DrawMesh(cmdList, ctx.geometryManager, 1);
     }
-
     virtual char* GetName() const override { return "Forward Pass"; }
 
 private:
