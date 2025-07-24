@@ -45,14 +45,13 @@ public:
         // TODO: Instance rendering
         // Upload all model matrices to a buffer, then use instanced drawing
 
-        glm::mat4 mvp;
+        glm::mat4 targetVp = ctx.targetCamera->getProjectionMatrix() * ctx.targetCamera->getViewMatrix();
         auto meshView = ctx.registry.view<MeshHandle, ModelMatrix>();
         for (auto entity : meshView) {
             const MeshHandle meshHandle = ctx.registry.get<MeshHandle>(entity);
             const auto& modelMatrix = ctx.registry.get<ModelMatrix>(entity);
 
-            // Compute MVP for this specific entity
-            mvp = ctx.targetCamera->getProjectionMatrix() * ctx.targetCamera->getViewMatrix() * modelMatrix.matrix;
+            glm::mat4 mvp = targetVp * modelMatrix.matrix;
 
             // Upload MVP for this draw call
             auto mvpUniform = ctx.uniformManager->UploadUniform(&mvp, sizeof(glm::mat4));

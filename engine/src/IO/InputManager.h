@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <iostream>
+#include "InputKeys.h"
 
 class InputManager {
 public:
@@ -51,12 +52,34 @@ public:
             m_lastX = m_mouseX;
             m_lastY = m_mouseY;
             m_firstMouse = false;
+            m_xOffset = 0;
+            m_yOffset = 0;
+        } else {
+            m_xOffset = m_mouseX - m_lastX;
+            m_yOffset = m_lastY - m_mouseY;
         }
 
-        m_xOffset = m_mouseX - m_lastX;
-        m_yOffset = m_lastY - m_mouseY;
-        m_lastX = m_mouseX;
-        m_lastY = m_mouseY;
+        // Always reset cursor to center when disabled (like GLFW)
+        if (m_cursorMode == CursorMode::DISABLED) {
+            RECT clientRect;
+            GetClientRect(m_window, &clientRect);
+
+            POINT centerPoint;
+            centerPoint.x = (clientRect.right - clientRect.left) / 2;
+            centerPoint.y = (clientRect.bottom - clientRect.top) / 2;
+
+            // Convert to screen coordinates and reset cursor
+            ClientToScreen(m_window, &centerPoint);
+            SetCursorPos(centerPoint.x, centerPoint.y);
+
+            // Update last position to center (in client coordinates)
+            m_lastX = (clientRect.right - clientRect.left) / 2;
+            m_lastY = (clientRect.bottom - clientRect.top) / 2;
+        } else {
+            // Normal mode: just track the cursor position
+            m_lastX = m_mouseX;
+            m_lastY = m_mouseY;
+        }
     }
 
     bool isKeyDown(int key) const {
@@ -103,13 +126,13 @@ public:
 
             case CursorMode::DISABLED:
                 ShowCursor(FALSE);
-                RECT windowRect;
-                GetClientRect(m_window, &windowRect);
-                ClientToScreen(m_window, (POINT*)&windowRect.left);
-                ClientToScreen(m_window, (POINT*)&windowRect.right);
-                ClipCursor(&windowRect);
+                // Don't clip the cursor - we'll handle position ourselves
+                ClipCursor(nullptr);
                 m_cursorHidden = true;
-                m_cursorClipped = true;
+                m_cursorClipped = false;
+
+                // Reset first mouse flag when entering disabled mode
+                m_firstMouse = true;
                 break;
         }
     }
@@ -135,24 +158,6 @@ public:
         return vkCode != -1 && (GetAsyncKeyState(vkCode) & 0x8000) != 0;
     }
 
-    static const int KEY_W = 0x57;
-    static const int KEY_A = 0x41;
-    static const int KEY_S = 0x53;
-    static const int KEY_D = 0x44;
-    static const int KEY_Q = 0x51;
-    static const int KEY_E = 0x45;
-    static const int KEY_F = 0x46;
-    static const int KEY_SPACE = VK_SPACE;
-    static const int KEY_ESCAPE = VK_ESCAPE;
-    static const int KEY_ENTER = VK_RETURN;
-    static const int KEY_SHIFT = VK_SHIFT;
-    static const int KEY_CTRL = VK_CONTROL;
-    static const int KEY_ALT = VK_MENU;
-
-    static const int MOUSE_BUTTON_LEFT = 0;
-    static const int MOUSE_BUTTON_RIGHT = 1;
-    static const int MOUSE_BUTTON_MIDDLE = 2;
-
 private:
     InputManager() = default;
 
@@ -168,9 +173,11 @@ private:
 
     int getMouseVKCode(int button) const {
         switch (button) {
-            case MOUSE_BUTTON_LEFT: return VK_LBUTTON;
-            case MOUSE_BUTTON_RIGHT: return VK_RBUTTON;
-            case MOUSE_BUTTON_MIDDLE: return VK_MBUTTON;
+            case InputKeys::MOUSE_LEFT: return VK_LBUTTON;
+            case InputKeys::MOUSE_RIGHT: return VK_RBUTTON;
+            case InputKeys::MOUSE_MIDDLE: return VK_MBUTTON;
+            case InputKeys::MOUSE_X1: return VK_XBUTTON1;
+            case InputKeys::MOUSE_X2: return VK_XBUTTON2;
             default: return -1;
         }
     }

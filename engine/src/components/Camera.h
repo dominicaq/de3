@@ -47,7 +47,13 @@ public:
     }
 
     void setAspectRatio(float width, float height) {
-        m_aspectRatio = width / height;
+        float newAspectRatio = width / height;
+        const float EPSILON = 0.001f;
+        if (std::abs(m_aspectRatio - newAspectRatio) < EPSILON) {
+            return;
+        }
+
+        m_aspectRatio = newAspectRatio;
         m_dirtyProjection = true;
     }
 

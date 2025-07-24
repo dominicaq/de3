@@ -6,7 +6,7 @@
 // Engine includes
 #include "renderer/Renderer.h"
 #include "renderer/FPSUtils.h"
-#include "InputManager.h"
+#include "io/InputManager.h"
 #include <entt/entt.hpp>
 
 // ECS systems

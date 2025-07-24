@@ -1,10 +1,8 @@
 #pragma once
 
+#include "io/InputManager.h"
 #include "components/GameObject.h"
-#include "InputManager.h"
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 
 class FreeCamera : public Script {
@@ -32,42 +30,42 @@ public:
         float dt = cameraSpeed * deltaTime;
 
         // Lock cursor
-        if (Input.isKeyPressed(InputManager::KEY_Q)) {
+        if (Input.isKeyPressed(InputKeys::Q)) {
             Input.setCursorMode(InputManager::CursorMode::NORMAL);
         }
-        if (Input.isKeyPressed(InputManager::KEY_E)) {
+        if (Input.isKeyPressed(InputKeys::E)) {
             Input.setCursorMode(InputManager::CursorMode::DISABLED);
         }
 
         // Handle movement based on input
-        if (Input.isKeyDown(InputManager::KEY_W)) {
+        if (Input.isKeyDown(InputKeys::W)) {
             position += dt * front;
         }
-        if (Input.isKeyDown(InputManager::KEY_S)) {
+        if (Input.isKeyDown(InputKeys::S)) {
             position -= dt * front;
         }
-        if (Input.isKeyDown(InputManager::KEY_A)) {
+        if (Input.isKeyDown(InputKeys::A)) {
             position -= right * dt;
         }
-        if (Input.isKeyDown(InputManager::KEY_D)) {
+        if (Input.isKeyDown(InputKeys::D)) {
             position += right * dt;
         }
-        if (Input.isKeyDown(InputManager::KEY_SPACE)) {
+        if (Input.isKeyDown(InputKeys::SPACE)) {
             position += up * dt * 2.0f;
         }
-        if (Input.isKeyDown(InputManager::KEY_CTRL)) {
+        if (Input.isKeyDown(InputKeys::CTRL)) {
             position -= up * dt * 2.0f;
         }
 
         // Speed
-        if (Input.isKeyDown(InputManager::KEY_SHIFT)) {
+        if (Input.isKeyDown(InputKeys::SHIFT)) {
             cameraSpeed = boostSpeed;
         } else {
             cameraSpeed = defaultSpeed;
         }
 
         // Flash light
-        // if (Input.isKeyPressed(VK_F)) {
+        // if (Input.isKeyPressed(InputKeys::F)) {
         //     m_flashLightToggle = !m_flashLightToggle;
         //     auto& light = gameObject->getComponent<Light>();
         //     light.isActive = m_flashLightToggle;
