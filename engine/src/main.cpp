@@ -18,10 +18,10 @@
 #include "renderer/renderpasses/RenderPassManager.h"
 #include "resources/GeometryManager.h"
 #include "resources/UniformManager.h"
+#include "resources/ShaderManager.h"
 
 // TEMP
 #include "renderer/renderpasses/ForwardPass.h"
-#include "renderer/renderpasses/TrianglePass.h"
 #include "RotationScript.h"
 #include "FreeCamera.h"
 
@@ -59,6 +59,11 @@ int main() {
 
     DX12Device* device = renderer->GetDevice();
 
+    // ================================
+    std::unique_ptr<ShaderManager> shaderManager = std::make_unique<ShaderManager>();
+    shaderManager->SetShaderDirectories("../../shaders/hlsl/", "../../shaders/compiled/");
+
+    // ================================
     std::unique_ptr<GeometryManager> geometryManager = std::make_unique<GeometryManager>(device->GetAllocator());
     GeometryManager::Config geoConfig;
     geoConfig.vertexBufferSize = 128 * 1024 * 1024;  // 128MB
@@ -67,6 +72,7 @@ int main() {
     geoConfig.maxUploadsPerFrame = 8;
     geometryManager->SetConfig(geoConfig);
 
+    // ================================
     std::unique_ptr<UniformManager> uniformManager = std::make_unique<UniformManager>(
         device->GetAllocator(),
         device->GetD3D12Device()
@@ -83,10 +89,13 @@ int main() {
         return -1;
     }
 
+    // ================================
     // Render Pass System
     RenderPassManager passManager;
     passManager.AddPass(std::make_unique<ForwardPass>());
-    if (!passManager.InitializeAllPasses(device->GetD3D12Device())) {
+
+    // Initialize passes with both device and shader manager
+    if (!passManager.InitializeAllPasses(device->GetD3D12Device(), shaderManager.get())) {
         throw std::runtime_error("Failed to init RenderPasses");
     }
 
@@ -95,7 +104,7 @@ int main() {
     entt::registry registry;
     RenderContext renderCtx {registry};
     renderCtx.geometryManager = geometryManager.get();
-    renderCtx.uniformManager = uniformManager.get();  // Add uniform manager to context
+    renderCtx.uniformManager = uniformManager.get();
     renderCtx.renderer = renderer.get();
 
     VertexAttributes cubeVertices[] = {
@@ -227,6 +236,14 @@ int main() {
         transformSystem.updateTransformComponents();
 
 #ifdef _DEBUG
+        // Hot-reload shaders (check for file changes)
+        passManager.CheckForShaderChanges(shaderManager.get());
+        // Manual reload on F5 key
+        if (Input.isKeyPressed(VK_F5)) {
+            printf("Manual shader reload triggered\n");
+            shaderManager->CheckForModifiedShaders();
+        }
+
         if (frameCount % g_config.targetFPS == 0) {
             renderer->DebugPrintValidationMessages();
         }
@@ -249,6 +266,7 @@ int main() {
     renderer->FlushGPU();
 
     // Shutdown managers before renderer
+    shaderManager.reset();
     uniformManager.reset();
     geometryManager.reset();
 

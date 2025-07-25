@@ -13,6 +13,11 @@ public:
     bool Initialize(const std::string& source, const std::string& entryPoint,
                    const std::string& target, const std::string& debugName);
 
+    bool InitializeFromFile(const std::string& filePath, const std::string& entryPoint,
+                           const std::string& target, const std::string& debugName);
+
+    bool InitializeFromBlob(ID3DBlob* blob, const std::string& debugName);
+
     const std::string& GetName() const { return m_name; }
     ID3DBlob* GetShaderBlob() const { return m_shaderBlob.Get(); }
 

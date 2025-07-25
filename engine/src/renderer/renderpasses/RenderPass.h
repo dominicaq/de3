@@ -9,8 +9,8 @@ class RenderPass {
 public:
     virtual ~RenderPass() = default;
 
-    // Life cycle
-    virtual bool Initialize(ID3D12Device* device) = 0;
+    // Life cycle - Updated to include ShaderManager
+    virtual bool Initialize(ID3D12Device* device, ShaderManager* shaderManager = nullptr) = 0;
     virtual void Execute(CommandList* cmdList, const RenderContext& ctx) = 0;
 
     // Interface
@@ -30,7 +30,6 @@ protected:
         if (!cmdList || !geometryManager || meshHandle == INVALID_MESH_HANDLE) {
             return;
         }
-
         const MeshView* renderData = geometryManager->GetMeshRenderData(meshHandle);
         if (renderData) {
             cmdList->GetCommandList()->DrawIndexedInstanced(
@@ -49,7 +48,6 @@ protected:
         if (!cmdList || !geometryManager || meshHandle == INVALID_MESH_HANDLE) {
             return;
         }
-
         const MeshView* renderData = geometryManager->GetMeshRenderData(meshHandle);
         if (renderData) {
             cmdList->GetCommandList()->DrawIndexedInstanced(

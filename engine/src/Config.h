@@ -18,7 +18,7 @@ struct EngineConfig {
     bool useTripleBuffering = true;
     DXGI_FORMAT backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     bool cappedFPS = true;
-    uint32_t targetFPS = 180;
+    uint32_t targetFPS = 360;
 
     // DEBUG SETTINGS
     uint32_t debugFrameInterval = 60;

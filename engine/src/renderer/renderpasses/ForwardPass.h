@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RenderPass.h"
+// #include "../renderer/dx12/"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <entt/entt.hpp>
@@ -9,14 +10,28 @@ class ForwardPass : public RenderPass {
 public:
     ~ForwardPass() = default;
 
-    virtual bool Initialize(ID3D12Device* device) override {
-        CompileShaders();
+    virtual bool Initialize(ID3D12Device* device, ShaderManager* shaderManager) {
+        m_shaderManager = shaderManager;
+
+        if (!LoadShaders()) {
+            return false;
+        }
+
         CreateRootSignature(device);
         CreatePipelineState(device);
         return true;
     }
 
     virtual void Execute(CommandList* cmdList, const RenderContext& ctx) override {
+        // Validate shaders are still valid
+        const Shader* vs = m_shaderManager->GetShader(m_vertexShaderHandle);
+        const Shader* ps = m_shaderManager->GetShader(m_pixelShaderHandle);
+
+        if (!vs || !ps) {
+            printf("ForwardPass: Invalid shader handles, skipping render\n");
+            return;
+        }
+
         ctx.renderer->SetupRenderTarget(cmdList);
         ctx.renderer->SetupViewportAndScissor(cmdList);
 
@@ -67,58 +82,50 @@ public:
             DrawMesh(cmdList, ctx.geometryManager, meshHandle);
         }
     }
+
     virtual char* GetName() const override { return "Forward Pass"; }
 
+    // TODO: Hot-reload support
+    // void ReloadShaders() {
+    //     if (!m_shaderManager) {
+    //         return;
+    //     }
+    //     m_shaderManager->ReloadShader(m_vertexShaderHandle);
+    //     m_shaderManager->ReloadShader(m_pixelShaderHandle);
+    //     // Note: You'd need to recreate the PSO after reloading shaders
+    // }
+
 private:
-    Shader m_vertexShader;
-    Shader m_pixelShader;
+    ShaderManager* m_shaderManager = nullptr;
+    ShaderHandle m_vertexShaderHandle = INVALID_SHADER_HANDLE;
+    ShaderHandle m_pixelShaderHandle = INVALID_SHADER_HANDLE;
 
-    void CompileShaders() {
-        std::string vertexShaderSource = R"(
-            cbuffer MVPBuffer : register(b0) {
-                row_major float4x4 mvp;
-            };
+    bool LoadShaders() {
+        m_vertexShaderHandle = m_shaderManager->CreateShaderFromFile(
+            "verts.hlsl",
+            "VSMain",
+            "vs_5_1",
+            "ForwardVS"
+        );
 
-            struct VSInput {
-                float3 position : POSITION;
-                float3 color : COLOR;
-            };
-
-            struct VSOutput {
-                float4 position : SV_POSITION;
-                float3 color : COLOR;
-            };
-
-            VSOutput VSMain(VSInput input) {
-                VSOutput output;
-                output.position = mul(float4(input.position, 1.0), mvp);
-                output.color = input.color;
-                return output;
-            }
-        )";
-
-        std::string pixelShaderSource = R"(
-            struct VSOutput {
-                float4 position : SV_POSITION;
-                float3 color : COLOR;
-            };
-
-            float4 PSMain(VSOutput input) : SV_TARGET {
-                return float4(input.color, 1.0);
-            }
-        )";
-
-        bool vsSuccess = m_vertexShader.Initialize(vertexShaderSource, "VSMain", "vs_5_1", "ForwardVS");
-        printf("Forward vertex shader compile result: %s\n", vsSuccess ? "SUCCESS" : "FAILED");
-        if (!vsSuccess) {
-            throw std::runtime_error("Failed to compile forward vertex shader");
+        if (m_vertexShaderHandle == INVALID_SHADER_HANDLE) {
+            printf("ForwardPass: Failed to load vertex shader\n");
+            return false;
         }
 
-        bool psSuccess = m_pixelShader.Initialize(pixelShaderSource, "PSMain", "ps_5_1", "ForwardPS");
-        printf("Forward pixel shader compile result: %s\n", psSuccess ? "SUCCESS" : "FAILED");
-        if (!psSuccess) {
-            throw std::runtime_error("Failed to compile forward pixel shader");
+        m_pixelShaderHandle = m_shaderManager->CreateShaderFromFile(
+            "frag.hlsl",
+            "PSMain",
+            "ps_5_1",
+            "ForwardPS"
+        );
+
+        if (m_pixelShaderHandle == INVALID_SHADER_HANDLE) {
+            printf("ForwardPass: Failed to load pixel shader\n");
+            return false;
         }
+
+        return true;
     }
 
     void CreateRootSignature(ID3D12Device* device) {
@@ -166,14 +173,17 @@ private:
     }
 
     void CreatePipelineState(ID3D12Device* device) {
+        const Shader* vs = m_shaderManager->GetShader(m_vertexShaderHandle);
+        const Shader* ps = m_shaderManager->GetShader(m_pixelShaderHandle);
+
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
         // Shaders
         psoDesc.pRootSignature = m_rootSignature.Get();
-        psoDesc.VS.pShaderBytecode = m_vertexShader.GetShaderBlob()->GetBufferPointer();
-        psoDesc.VS.BytecodeLength = m_vertexShader.GetShaderBlob()->GetBufferSize();
-        psoDesc.PS.pShaderBytecode = m_pixelShader.GetShaderBlob()->GetBufferPointer();
-        psoDesc.PS.BytecodeLength = m_pixelShader.GetShaderBlob()->GetBufferSize();
+        psoDesc.VS.pShaderBytecode = vs->GetShaderBlob()->GetBufferPointer();
+        psoDesc.VS.BytecodeLength = vs->GetShaderBlob()->GetBufferSize();
+        psoDesc.PS.pShaderBytecode = ps->GetShaderBlob()->GetBufferPointer();
+        psoDesc.PS.BytecodeLength = ps->GetShaderBlob()->GetBufferSize();
 
         // Rasterizer state - enabled back-face culling for better depth testing
         psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
